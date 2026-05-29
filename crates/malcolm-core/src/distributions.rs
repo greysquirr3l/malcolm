@@ -37,7 +37,7 @@ pub trait DistributionSampler {
 
 /// Power-law distribution P(x) ~ x^(-alpha), sampled via inverse CDF.
 ///
-/// Uses x_min = 1.0.  The inverse CDF transform gives:
+/// Uses `x_min` = 1.0.  The inverse CDF transform gives:
 /// `x = (1 - u)^(-1 / (alpha - 1))` for uniform `u ~ U(0, 1)`.
 ///
 /// Requires `alpha > 1` for a proper distribution.
@@ -171,9 +171,14 @@ mod tests {
     use rand::rngs::SmallRng;
 
     const N: usize = 10_000;
+    const N_F64: f64 = 10_000.0;
 
     /// Hill estimator for the power-law exponent:
-    /// `alpha_hat = 1 + n / sum(ln(x_i / x_min))`, x_min = 1.
+    /// `alpha_hat = 1 + n / sum(ln(x_i / x_min))`, `x_min` = 1.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "sample count = N = 10_000, lossless in f64"
+    )]
     fn hill_estimate(samples: &[f64]) -> f64 {
         let n = samples.len() as f64;
         let sum_ln: f64 = samples.iter().map(|&x| libm::log(x)).sum();
@@ -198,7 +203,10 @@ mod tests {
 
     #[test]
     fn pareto_samples_ge_x_min_and_finite_mean() {
-        let dist = Pareto { alpha: 2.0, x_min: 1.0 };
+        let dist = Pareto {
+            alpha: 2.0,
+            x_min: 1.0,
+        };
         let mut rng = SmallRng::seed_from_u64(42);
         let samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
 
@@ -207,17 +215,23 @@ mod tests {
             "sample below x_min"
         );
 
-        let mean: f64 = samples.iter().sum::<f64>() / N as f64;
-        assert!(!mean.is_nan() && !mean.is_infinite(), "mean is not finite: {mean}");
+        let mean: f64 = samples.iter().sum::<f64>() / N_F64;
+        assert!(
+            !mean.is_nan() && !mean.is_infinite(),
+            "mean is not finite: {mean}"
+        );
     }
 
     #[test]
     fn lognormal_mean_within_5pct_of_theoretical() {
-        let dist = LogNormal { mu: 0.0, sigma: 1.0 };
+        let dist = LogNormal {
+            mu: 0.0,
+            sigma: 1.0,
+        };
         let mut rng = SmallRng::seed_from_u64(42);
         let samples: Vec<f64> = (0..N).map(|_| dist.sample(&mut rng)).collect();
 
-        let mean: f64 = samples.iter().sum::<f64>() / N as f64;
+        let mean: f64 = samples.iter().sum::<f64>() / N_F64;
         // Theoretical mean: exp(mu + sigma^2/2) = exp(0.5) ≈ 1.6487
         let expected = libm::exp(0.5);
         let rel_err = libm::fabs(mean - expected) / expected;

@@ -1,14 +1,12 @@
-//! Core trait definitions: `Fault`, `MalcolmClock`, `DistributionSampler`.
+//! Additional port traits for the malcolm assembly layer.
 //!
-//! Implementations will be added in T06.
+//! The primary `Fault` port trait lives in [`crate::fault`]. This module
+//! will house supplementary traits as they are needed by later tasks.
 //!
-//! # Example
+//! Planned additions:
 //!
-//! ```rust
-//! use malcolm::traits;
-//! let _ = traits::PLACEHOLDER;
-//! ```
+//! - **T09** — `MalcolmClock`: injectable time source for clock fault testing
+//! - `DistributionSampler` is defined in `malcolm-core::distributions` and
+//!   does not need to be redefined here.
 
-/// Placeholder constant — will be removed in T06.
-// TODO(T06): replace with Fault, MalcolmClock, DistributionSampler traits
-pub const PLACEHOLDER: () = ();
+// TODO(T09): add MalcolmClock trait (injectable time source: now_ms, advance, freeze, jump)

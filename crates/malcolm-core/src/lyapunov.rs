@@ -216,11 +216,13 @@ mod tests {
 
         // Intensities must increase monotonically.
         for window in curve.windows(2) {
-            assert!(window[1].0 > window[0].0, "intensities must increase");
+            if let [a, b] = window {
+                assert!(b.0 > a.0, "intensities must increase");
+            }
         }
 
         // The final point (r=4.0) must be firmly in the chaotic regime.
-        let lambda_at_max = curve.last().map(|p| p.1).unwrap_or(f64::NEG_INFINITY);
+        let lambda_at_max = curve.last().map_or(f64::NEG_INFINITY, |p| p.1);
         assert!(
             lambda_at_max > 0.5,
             "r=4.0 should have λ ≈ 0.693 (chaotic), got {lambda_at_max:.4}"
@@ -228,8 +230,11 @@ mod tests {
 
         // The stable region around r=2 must be represented by clearly negative λ values.
         // Steps 5–8 cover roughly r=1.79–2.26, which straddles the fixed-point singularity.
-        let has_negative = curve[5..9].iter().any(|p| p.1 < -0.5);
-        assert!(has_negative, "stable region around r=2 should yield strongly negative λ");
+        let has_negative = curve.get(5..9).is_some_and(|s| s.iter().any(|p| p.1 < -0.5));
+        assert!(
+            has_negative,
+            "stable region around r=2 should yield strongly negative λ"
+        );
     }
 
     #[test]
@@ -243,6 +248,6 @@ mod tests {
         let map = SensitivityMap::new(3.9, 3.9, 1);
         let curve = map.compute(500);
         assert_eq!(curve.len(), 1);
-        assert!((curve[0].0 - 3.9).abs() < 1e-10);
+        assert!(curve.first().is_some_and(|p| (p.0 - 3.9).abs() < 1e-10));
     }
 }

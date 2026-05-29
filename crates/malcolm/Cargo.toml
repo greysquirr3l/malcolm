@@ -4,10 +4,14 @@ version = "0.1.0"
 edition = "2024"
 description = "Chaos engineering fault injection library"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/greysquirr3l/malcom"
+readme = "../../README.md"
+keywords = ["chaos", "fault-injection", "distributed-systems", "testing", "simulation"]
+categories = ["development-tools::testing", "algorithms", "simulation"]
 
 [dependencies]
 malcolm-core = { path = "../malcolm-core" }
-tracing = "0.1"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = "2"
 rand = "0.8"
 
@@ -15,6 +19,9 @@ rand = "0.8"
 version = "1"
 optional = true
 features = ["time", "rt"]
+
+[dev-dependencies]
+tracing-test = "0.2"
 
 [features]
 default = []

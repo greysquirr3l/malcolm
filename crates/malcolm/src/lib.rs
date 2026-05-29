@@ -16,12 +16,17 @@
 //! # Example
 //!
 //! ```rust
-//! use malcolm::faults;
-//! let _ = faults::PLACEHOLDER;
+//! use malcolm::fault::{FaultHandle, FaultRegistry};
+//!
+//! let mut registry = FaultRegistry::new();
+//! registry.register("node-0", FaultHandle::new());
+//! assert_eq!(registry.active_count("node-0"), 1);
 //! ```
 
 pub use malcolm_core as core;
+pub use malcolm_core::types::{DryRunReport, FaultEvent, FaultResult, SkipReason};
 
+pub mod fault;
 pub mod faults;
 pub mod replay;
 pub mod scenario;
