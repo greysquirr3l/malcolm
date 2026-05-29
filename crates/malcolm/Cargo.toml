@@ -13,7 +13,7 @@ categories = ["development-tools::testing", "algorithms", "simulation"]
 malcolm-core = { path = "../malcolm-core" }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = "2"
-rand = "0.8"
+rand = { version = "0.8", features = ["small_rng"] }
 
 [dependencies.tokio]
 version = "1"
