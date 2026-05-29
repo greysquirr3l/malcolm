@@ -97,7 +97,11 @@ impl BifurcationProfile {
     /// ```
     #[must_use]
     pub const fn network_partition() -> Self {
-        Self { threshold: 0.6, sensitivity_window: 0.2, label: "network_partition" }
+        Self {
+            threshold: 0.6,
+            sensitivity_window: 0.2,
+            label: "network_partition",
+        }
     }
 
     /// Profile for a memory pressure fault.
@@ -117,7 +121,11 @@ impl BifurcationProfile {
     /// ```
     #[must_use]
     pub const fn memory_pressure() -> Self {
-        Self { threshold: 0.75, sensitivity_window: 0.15, label: "memory_pressure" }
+        Self {
+            threshold: 0.75,
+            sensitivity_window: 0.15,
+            label: "memory_pressure",
+        }
     }
 
     /// Profile for a latency cascade fault.
@@ -137,7 +145,11 @@ impl BifurcationProfile {
     /// ```
     #[must_use]
     pub const fn latency_cascade() -> Self {
-        Self { threshold: 0.5, sensitivity_window: 0.25, label: "latency_cascade" }
+        Self {
+            threshold: 0.5,
+            sensitivity_window: 0.25,
+            label: "latency_cascade",
+        }
     }
 
     /// Profile for a Byzantine node fault.
@@ -157,7 +169,11 @@ impl BifurcationProfile {
     /// ```
     #[must_use]
     pub const fn byzantine_node() -> Self {
-        Self { threshold: 0.33, sensitivity_window: 0.15, label: "byzantine_node" }
+        Self {
+            threshold: 0.33,
+            sensitivity_window: 0.15,
+            label: "byzantine_node",
+        }
     }
 }
 
@@ -339,7 +355,10 @@ mod tests {
     #[test]
     fn regime_non_exhaustive_wildcard_compiles() {
         let r = Regime::Stable;
-        #[expect(unreachable_patterns, reason = "wildcard is only reachable in external crates")]
+        #[expect(
+            unreachable_patterns,
+            reason = "wildcard is only reachable in external crates"
+        )]
         let _ = match r {
             Regime::Stable => 0,
             Regime::Sensitive => 1,
