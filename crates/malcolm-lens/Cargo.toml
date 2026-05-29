@@ -1,0 +1,11 @@
+[package]
+name = "malcolm-lens"
+version = "0.1.0"
+edition = "2024"
+description = "LLM interpretability layer for malcolm chaos reports"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+malcolm = { path = "../malcolm" }
+thiserror = { workspace = true }
+serde = { workspace = true }
