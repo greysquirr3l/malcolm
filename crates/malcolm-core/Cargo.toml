@@ -6,6 +6,8 @@ description = "Pure math domain primitives for malcolm chaos engineering"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+libm = "0.2"
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 
 [features]
 default = []
