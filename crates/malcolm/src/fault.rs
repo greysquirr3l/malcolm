@@ -27,7 +27,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use malcolm_core::bifurcation::BifurcationProfile;
 use malcolm_core::types::{DryRunReport, FaultResult};
@@ -235,6 +235,212 @@ impl FaultRegistry {
             }
         }
         self.inner.clear();
+    }
+}
+
+// ── MalcolmClock ──────────────────────────────────────────────────────────────
+
+/// A clock abstraction for use in testable code.
+///
+/// Code that relies on wall-clock time should accept a `&dyn MalcolmClock` (or
+/// `Arc<dyn MalcolmClock>`) rather than calling `SystemTime::now()` directly.
+/// This allows tests to substitute a [`MockClock`] and control time
+/// deterministically without touching the system clock.
+///
+/// # Example
+///
+/// ```rust
+/// use malcolm::fault::{MalcolmClock, RealClock};
+///
+/// let clock = RealClock;
+/// let now = clock.now_ms();
+/// assert!(now > 0);
+/// ```
+pub trait MalcolmClock: Send + Sync {
+    /// Returns the current time as milliseconds since the UNIX epoch.
+    fn now_ms(&self) -> u64;
+}
+
+// ── RealClock ─────────────────────────────────────────────────────────────────
+
+/// The production [`MalcolmClock`] implementation backed by `SystemTime`.
+///
+/// Returns `0` on the (extremely unlikely) event that the system clock reports
+/// a time before the UNIX epoch, and saturates at [`u64::MAX`] if the timestamp
+/// exceeds ~584 million years from 1970.
+///
+/// # Example
+///
+/// ```rust
+/// use malcolm::fault::{MalcolmClock, RealClock};
+///
+/// let now = RealClock.now_ms();
+/// assert!(now > 0);
+/// ```
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RealClock;
+
+impl MalcolmClock for RealClock {
+    fn now_ms(&self) -> u64 {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        u64::try_from(millis).unwrap_or(u64::MAX)
+    }
+}
+
+// ── MockClock ─────────────────────────────────────────────────────────────────
+
+/// A fully controllable clock for use in tests and simulations.
+///
+/// All mutating methods take `&self` and use atomic operations so that
+/// `MockClock` can be shared across threads via `Arc<MockClock>`.
+///
+/// # Note
+///
+/// These methods only affect code that reads time through this clock instance.
+/// They do **not** modify the system clock.
+///
+/// # Example
+///
+/// ```rust
+/// use malcolm::fault::{MalcolmClock, MockClock};
+///
+/// let clock = MockClock::default();
+/// let t0 = clock.now_ms();
+/// clock.advance(100);
+/// assert_eq!(clock.now_ms(), t0 + 100);
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct MockClock {
+    time_ms: Arc<AtomicU64>,
+    frozen: Arc<AtomicBool>,
+}
+
+impl MockClock {
+    /// Create a new `MockClock` with its counter initialised to `start_ms`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::fault::{MalcolmClock, MockClock};
+    ///
+    /// let clock = MockClock::at(1_000);
+    /// assert_eq!(clock.now_ms(), 1_000);
+    /// ```
+    #[must_use]
+    pub fn at(start_ms: u64) -> Self {
+        let clock = Self::default();
+        clock.set(start_ms);
+        clock
+    }
+
+    /// Advance the clock by `ms` milliseconds (saturating).
+    ///
+    /// No-op while the clock is frozen.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::fault::{MalcolmClock, MockClock};
+    ///
+    /// let clock = MockClock::default();
+    /// clock.advance(50);
+    /// assert_eq!(clock.now_ms(), 50);
+    /// ```
+    pub fn advance(&self, ms: u64) {
+        if !self.frozen.load(Ordering::Acquire) {
+            self.time_ms.fetch_add(ms, Ordering::AcqRel);
+        }
+    }
+
+    /// Freeze the clock at its current value.
+    ///
+    /// While frozen, [`advance`](Self::advance) and [`jump`](Self::jump) are
+    /// silently ignored. Call [`set`](Self::set) to unfreeze.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::fault::{MalcolmClock, MockClock};
+    ///
+    /// let clock = MockClock::at(500);
+    /// clock.freeze();
+    /// clock.advance(100);
+    /// assert_eq!(clock.now_ms(), 500); // still frozen
+    /// ```
+    pub fn freeze(&self) {
+        self.frozen.store(true, Ordering::Release);
+    }
+
+    /// Jump the clock forward (`ms > 0`) or backward (`ms < 0`), saturating at `0`
+    /// on underflow and at [`u64::MAX`] on overflow.
+    ///
+    /// No-op while the clock is frozen.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::fault::{MalcolmClock, MockClock};
+    ///
+    /// let clock = MockClock::at(1_000);
+    /// clock.jump(500);
+    /// assert_eq!(clock.now_ms(), 1_500);
+    /// clock.jump(-200);
+    /// assert_eq!(clock.now_ms(), 1_300);
+    /// ```
+    pub fn jump(&self, ms: i64) {
+        if self.frozen.load(Ordering::Acquire) {
+            return;
+        }
+        if ms >= 0 {
+            #[expect(
+                clippy::cast_sign_loss,
+                reason = "ms is non-negative after the if guard"
+            )]
+            let add = ms as u64;
+            self.time_ms.fetch_add(add, Ordering::AcqRel);
+        } else {
+            let abs_ms = ms.unsigned_abs();
+            let mut current = self.time_ms.load(Ordering::Acquire);
+            loop {
+                let new_val = current.saturating_sub(abs_ms);
+                match self.time_ms.compare_exchange_weak(
+                    current,
+                    new_val,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(actual) => current = actual,
+                }
+            }
+        }
+    }
+
+    /// Set the clock to an exact millisecond value and unfreeze it.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::fault::{MalcolmClock, MockClock};
+    ///
+    /// let clock = MockClock::default();
+    /// clock.freeze();
+    /// clock.set(9_000);
+    /// clock.advance(1_000);
+    /// assert_eq!(clock.now_ms(), 10_000); // unfrozen by set()
+    /// ```
+    pub fn set(&self, ms: u64) {
+        self.time_ms.store(ms, Ordering::Release);
+        self.frozen.store(false, Ordering::Release);
+    }
+}
+
+impl MalcolmClock for MockClock {
+    fn now_ms(&self) -> u64 {
+        self.time_ms.load(Ordering::Acquire)
     }
 }
 
