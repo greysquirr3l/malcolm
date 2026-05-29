@@ -175,6 +175,30 @@ impl BifurcationProfile {
             label: "byzantine_node",
         }
     }
+
+    /// Profile for a clock skew fault.
+    ///
+    /// - threshold: 0.55
+    /// - sensitivity\_window: 0.20
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm_core::bifurcation::{BifurcationProfile, Regime, classify};
+    ///
+    /// let p = BifurcationProfile::clock_skew();
+    /// assert_eq!(classify(0.1, &p), Regime::Stable);
+    /// assert_eq!(classify(0.55, &p), Regime::Sensitive);
+    /// assert_eq!(classify(0.9, &p), Regime::Chaotic);
+    /// ```
+    #[must_use]
+    pub const fn clock_skew() -> Self {
+        Self {
+            threshold: 0.55,
+            sensitivity_window: 0.20,
+            label: "clock_skew",
+        }
+    }
 }
 
 // ── classify ──────────────────────────────────────────────────────────────────
