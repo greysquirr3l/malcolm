@@ -1,0 +1,66 @@
+# Wiggum
+tasks/
+plan.toml
+IMPLEMENTATION_PLAN.md
+features.json
+PROGRESS.md
+
+# IDE and editor files
+.vscode/
+
+# Coraline files
+.coraline/
+
+# Development Docs
+docs/dev/
+
+# ── Rust ─────────────────────────────────────────────────────────────────────
+/target/
+/target_chat_run/
+**/*.rs.bk
+*.pdb
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+
+# ── Windows ───────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ── Linux ─────────────────────────────────────────────────────────────────────
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ── GitHub / CI tooling ───────────────────────────────────────────────────────
+.gh/
+*.orig
+
+.markdownlint.json
+.markdownlintignore
+
+clippy_errors.txt
+clippy_full.txt
+chat_with_claude-2026-05-24.txt
+
+# mdbook generated output
+book/

@@ -1,0 +1,13 @@
+[package]
+name = "malcolm-core"
+version = "0.1.0"
+edition = "2024"
+description = "Pure math domain primitives for malcolm chaos engineering"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+
+[features]
+default = []
+
+[dev-dependencies]

@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "crates/malcolm-core",
+    "crates/malcolm",
+    "crates/malcolm-lens",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+rand = "0.8"
+tokio = { version = "1", features = ["time", "rt"] }
