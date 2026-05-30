@@ -68,13 +68,10 @@ jobs:
           set -euo pipefail
           remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git"
 
-          # Ensure wiki is enabled before attempting clone/push.
-          gh repo edit "$REPO" --enable-wiki || true
-
           has_wiki=$(gh api "repos/${REPO}" --jq '.has_wiki')
           if [[ "$has_wiki" != "true" ]]; then
-            echo "Repository wiki is disabled. Enable wiki and re-run this workflow." >&2
-            exit 1
+            echo "::warning::Repository wiki is disabled. Enable wiki and re-run this workflow."
+            exit 0
           fi
 
           rm -rf .wiki-repo
@@ -90,9 +87,9 @@ jobs:
           done
 
           if [[ "$cloned" != "true" ]]; then
-            echo "Could not clone wiki repository after retries." >&2
-            echo "If this is the first wiki publish, create one page manually in the GitHub UI and re-run." >&2
-            exit 1
+            echo "::warning::Could not clone wiki repository after retries."
+            echo "::warning::If this is the first wiki publish, create one page manually in the GitHub UI and re-run."
+            exit 0
           fi
 
           rsync -a --delete .wiki-src/ .wiki-repo/
