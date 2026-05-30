@@ -266,7 +266,10 @@ mod tests {
     use alloc::vec::Vec;
 
     /// Compute lag-1 (Pearson) autocorrelation of `samples`.
-    #[expect(clippy::cast_precision_loss, reason = "sample counts fit exactly in f64 mantissa")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "sample counts fit exactly in f64 mantissa"
+    )]
     fn lag1_autocorr(samples: &[f64]) -> f64 {
         let n = samples.len() as f64;
         let mean = samples.iter().sum::<f64>() / n;

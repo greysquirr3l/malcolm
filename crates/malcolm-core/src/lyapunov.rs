@@ -230,7 +230,9 @@ mod tests {
 
         // The stable region around r=2 must be represented by clearly negative λ values.
         // Steps 5–8 cover roughly r=1.79–2.26, which straddles the fixed-point singularity.
-        let has_negative = curve.get(5..9).is_some_and(|s| s.iter().any(|p| p.1 < -0.5));
+        let has_negative = curve
+            .get(5..9)
+            .is_some_and(|s| s.iter().any(|p| p.1 < -0.5));
         assert!(
             has_negative,
             "stable region around r=2 should yield strongly negative λ"
