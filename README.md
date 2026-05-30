@@ -20,6 +20,243 @@ malcolm is a standalone Rust chaos engineering library for fault injection and a
 malcolm = "0.1"
 ```
 
+## Scenario Composition
+
+`ChaosScenario` composes multiple fault primitives into one named run with a
+shared seed and bifurcation profile.
+
+```rust
+use malcolm::fault::FaultContext;
+use malcolm::faults::network::PacketLoss;
+use malcolm::scenario::ChaosScenario;
+use malcolm_core::bifurcation::BifurcationProfile;
+
+let scenario = ChaosScenario::builder()
+ .name("flaky-net")
+ .seed(1337)
+ .add_fault(PacketLoss::builder().seed(42).intensity(0.8).build())
+ .profile(BifurcationProfile::network_partition())
+ .build();
+
+let mut ctx = FaultContext {
+ seed: 1337,
+ timestamp_ms: 0,
+ node_id: "edge-0".to_owned(),
+ profile: BifurcationProfile::network_partition(),
+};
+
+let report = scenario.run(&mut ctx);
+let json = report.to_json();
+assert!(json.as_deref().is_ok_and(|payload| payload.contains("flaky-net")));
+```
+
+## Macro DSL
+
+When you want an inline scenario in a test, `malcolm!` expands to the same
+builder chain with less noise.
+
+```rust
+use malcolm::faults::network::PacketLoss;
+use malcolm::malcolm;
+use malcolm_core::bifurcation::BifurcationProfile;
+
+let scenario = malcolm! {
+ name: "macro-demo",
+ seed: 7,
+ profile: BifurcationProfile::network_partition(),
+ faults: [
+  PacketLoss::builder().seed(11).intensity(0.8).build(),
+ ],
+};
+```
+
+## Topology Cascades
+
+Use `Topology` + `CascadeFault` when one injected fault should probabilistically
+propagate across graph edges.
+
+```rust
+use malcolm::fault::{Fault, FaultContext};
+use malcolm::faults::network::PacketLoss;
+use malcolm::topology::{CascadeFault, Topology};
+use malcolm_core::bifurcation::BifurcationProfile;
+
+let topology = Topology::builder()
+ .name("cluster")
+ .add_edge("a", "b", 1.0)
+ .add_edge("b", "c", 0.5)
+ .build();
+
+let cascade = CascadeFault::new(
+ Box::new(PacketLoss::builder().seed(7).intensity(0.9).build()),
+ topology,
+ 42,
+);
+
+let ctx = FaultContext {
+ seed: 42,
+ timestamp_ms: 0,
+ node_id: "a".to_owned(),
+ profile: BifurcationProfile::network_partition(),
+};
+
+let _ = cascade.inject(&ctx);
+```
+
+## Replay Recording
+
+Use `RecordingHarness` to capture a deterministic `ScenarioRecord`, then verify
+with `ReplayHarness`.
+
+```rust
+use malcolm::fault::FaultContext;
+use malcolm::faults::network::PacketLoss;
+use malcolm::replay::{RecordingHarness, ReplayHarness};
+use malcolm::scenario::ChaosScenario;
+use malcolm_core::bifurcation::BifurcationProfile;
+
+let scenario = ChaosScenario::builder()
+ .name("flight-recorder")
+ .seed(5)
+ .add_fault(PacketLoss::builder().seed(3).intensity(0.8).build())
+ .profile(BifurcationProfile::network_partition())
+ .build();
+
+let mut ctx = FaultContext {
+ seed: 5,
+ timestamp_ms: 0,
+ node_id: "node-0".to_owned(),
+ profile: BifurcationProfile::network_partition(),
+};
+
+let record = RecordingHarness::new(&scenario).record(&mut ctx);
+let replay = ReplayHarness::new(record);
+assert!(replay.verify());
+```
+
+## Sealed Chaos Envelope
+
+Use `ScenarioEnvelope` when telemetry artifacts should be encrypted at rest and
+deliberately opened.
+
+```rust
+use malcolm::replay::RecordingHarness;
+use malcolm::replay::envelope::{EnvPassphraseProvider, ScenarioEnvelope};
+
+let provider = EnvPassphraseProvider::new("MALCOLM_ENVELOPE_PASSPHRASE");
+let envelope = ScenarioEnvelope::seal(&record, &provider)?;
+let bytes = envelope.to_bytes()?;
+
+let decoded = ScenarioEnvelope::from_bytes(&bytes)?;
+let opened = decoded.open_interactive(true, &provider)?;
+assert_eq!(opened.seed, record.seed);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+- Payload is encrypted/authenticated with ChaCha20-Poly1305.
+- Interactive open requires explicit confirmation.
+- Non-interactive open is denied unless a passphrase provider is configured.
+- Automation supports env-var, command, and keystore-backed passphrase sources.
+
+## Worked Examples
+
+Run the examples from `crates/malcolm`:
+
+```bash
+cargo run -p malcolm --example simulation
+cargo run -p malcolm --example replay_demo
+cargo run -p malcolm --example async_service --features tokio
+```
+
+- `simulation` demonstrates Lyapunov scoring and bifurcation classification in a
+    simple state-machine stress loop.
+- `replay_demo` records a scenario run, reloads the record, and verifies replay
+    integrity.
+- `async_service` shows network fault injection around a mock HTTP client using
+    a Tokio runtime.
+
+## malcolm-lens Provider Scaffold
+
+`malcolm-lens` now ships a feature-gated provider scaffold backed by
+`rig-core`.
+
+- Default feature: `ollama`
+- Optional feature: `anthropic`
+- Public API stays provider-agnostic through `LensProvider`
+
+Environment variables:
+
+- `MALCOLM_LENS_PROVIDER`: `ollama` (default) or `anthropic`
+- `MALCOLM_LENS_MODEL`: optional model override
+- `OLLAMA_BASE_URL`: optional Ollama endpoint override
+- `MALCOLM_LENS_ALLOW_REMOTE_OLLAMA`: optional override (`true/1/yes/on`) to permit non-loopback Ollama hosts
+- `MALCOLM_LENS_MAX_TOKENS`: optional token budget (default `1024`)
+- `ANTHROPIC_API_KEY`: required when provider is `anthropic`
+
+Security defaults:
+
+- When using provider `ollama`, remote `OLLAMA_BASE_URL` values are blocked by
+    default; loopback addresses are allowed.
+- Metadata endpoints such as `169.254.169.254` are always rejected.
+- Set `MALCOLM_LENS_ALLOW_REMOTE_OLLAMA=true` only when you intentionally run
+    Ollama on a trusted remote host.
+
+Prompt engine:
+
+- `PromptBuilder` emits a fixed system prompt, a pretty-printed
+    `ScenarioReport` JSON block, and a typed task suffix.
+- `Directive` supports `Narrative`, `AnomalyFlag`, `SuggestScenarios`, and
+    `ExplainDivergence`.
+- `LensReport` is now a tagged enum with serializable payloads for narratives,
+    anomaly flags, scenario suggestions, and replay divergence analysis.
+
+Response parsing:
+
+- `ResponseParser::parse(raw, directive)` first attempts direct JSON parsing.
+- If that fails, it extracts JSON from fenced code blocks.
+- If parsing still fails, it returns a narrative fallback with
+    `parse_warning` set so callers can detect degraded output.
+- Empty responses return `LensError::ParseFailure`.
+
+Lens analyzer integration:
+
+- `LensAnalyzer` is the end-to-end entrypoint that drives provider calls for
+    one directive (`analyze`) or a standard sequence
+    (`analyze_all`: Narrative + AnomalyFlag + SuggestScenarios).
+- Default timeouts are provider-specific: `30s` for Ollama and `10s` for
+    Anthropic.
+- Each LLM call emits an `info` span with `provider`, `model`, `directive`,
+    `duration_ms`, and `parse_ok` fields.
+- Lens output is advisory-only and cannot modify fault injection or replay
+    state.
+
+Feature checks:
+
+```bash
+cargo build -p malcolm-lens --features ollama
+cargo build -p malcolm-lens --no-default-features --features anthropic
+```
+
+Worked Lens examples:
+
+```bash
+cargo run -p malcolm-lens --example lens_postmortem
+cargo run -p malcolm-lens --example lens_suggest
+cargo run -p malcolm-lens --example lens_divergence
+```
+
+- Each example defaults to Ollama and exits cleanly with a clear message when
+    Ollama is not reachable.
+- To switch providers, set `MALCOLM_LENS_PROVIDER=anthropic` and
+    `ANTHROPIC_API_KEY`.
+
+Integration audit coverage:
+
+- `crates/malcolm-lens/tests/t23_integration_wiring.rs` exercises public API
+    wiring from `LensAnalyzer` through provider/parse boundaries.
+    wiring from `LensAnalyzer` through provider/parse boundaries.
+    wiring from `LensAnalyzer` through provider/parse boundaries.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.

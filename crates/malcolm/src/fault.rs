@@ -284,8 +284,8 @@ impl MalcolmClock for RealClock {
     fn now_ms(&self) -> u64 {
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+            .ok()
+            .map_or(0, |duration| duration.as_millis());
         u64::try_from(millis).unwrap_or(u64::MAX)
     }
 }
@@ -467,10 +467,12 @@ mod tests {
                 timestamp_ms: ctx.timestamp_ms,
             };
             tracing::info!(
+                target: "malcolm",
                 fault_type = %event.fault_type,
                 node_id = %event.node_id,
                 seed = event.seed,
                 intensity = event.intensity,
+                dry_run = false,
                 "fault injected",
             );
             FaultResult::Injected(event)
@@ -484,9 +486,11 @@ mod tests {
                 reason: "mock fault always injects".to_owned(),
             };
             tracing::debug!(
+                target: "malcolm",
                 fault_type = %report.fault_type,
                 node_id = %report.node_id,
                 would_inject = report.would_inject,
+                dry_run = true,
                 "dry run completed",
             );
             report
