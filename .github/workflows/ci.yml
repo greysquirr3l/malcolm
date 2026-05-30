@@ -21,6 +21,9 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Ensure rustfmt and clippy are available
+        run: rustup component add rustfmt clippy
+
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@v2
 
@@ -60,6 +63,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7m-none-eabi
+
+      - name: Ensure no_std target is available
+        run: rustup target add thumbv7m-none-eabi
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@v2
