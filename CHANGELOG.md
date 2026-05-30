@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.5.1] - 2026-05-30
+
+### Fixed
+
+- Hardened release publishing workflow for crates.io by adding retry logic,
+  already-published detection, and index propagation waits between crate
+  publishes.
+- Reduced false-negative release failures caused by crates.io index lag after
+  successful publishes.
+
+### Changed
+
+- Bumped workspace crates to `0.5.1`:
+  - `malcolm-core`
+  - `malcolm`
+  - `malcolm-lens`
+- Updated quick-start dependency examples to `malcolm = "0.5.1"`.
+
 ## [0.5.0] - 2026-05-30
 
 This release establishes `0.5.0` as the first feature-complete milestone for the malcolm workspace. It is based on the repository commit history through `chore: finalize implementation and cleanup`, plus the release automation and handbook integration shipped in this change set.
