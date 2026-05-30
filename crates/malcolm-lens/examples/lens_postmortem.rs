@@ -6,10 +6,10 @@
 use std::error::Error;
 use std::time::Duration;
 
+use malcolm::core::bifurcation::BifurcationProfile;
 use malcolm::fault::FaultContext;
 use malcolm::faults::network::{LatencySpike, PacketLoss};
 use malcolm::scenario::ChaosScenario;
-use malcolm::core::bifurcation::BifurcationProfile;
 use malcolm_lens::{Directive, LensAnalyzer, LensReport};
 
 #[path = "support/ollama_guard.rs"]
@@ -24,7 +24,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .name("checkout-degradation")
         .seed(44)
         .add_fault(PacketLoss::builder().seed(2).intensity(0.72).build())
-        .add_fault(LatencySpike::builder().seed(3).base_ms(180.0).intensity(0.78).build())
+        .add_fault(
+            LatencySpike::builder()
+                .seed(3)
+                .base_ms(180.0)
+                .intensity(0.78)
+                .build(),
+        )
         .profile(BifurcationProfile::latency_cascade())
         .build();
 
