@@ -95,11 +95,13 @@ impl Fault for NetworkPartition {
         let duration = PowerLaw { alpha: self.alpha }.sample(&mut rng);
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "network_partition",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             duration_s = duration,
+            dry_run = false,
             "network partition injected",
         );
 
@@ -123,11 +125,13 @@ impl Fault for NetworkPartition {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "network_partition",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             duration_s = duration,
+            dry_run = true,
             "network partition dry-run",
         );
 
@@ -247,11 +251,13 @@ impl Fault for PacketLoss {
         .sample(&mut rng);
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "packet_loss",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             loss_rate = loss_rate,
+            dry_run = false,
             "packet loss injected",
         );
 
@@ -279,11 +285,13 @@ impl Fault for PacketLoss {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "packet_loss",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             loss_rate = loss_rate,
+            dry_run = true,
             "packet loss dry-run",
         );
 
@@ -436,12 +444,14 @@ impl Fault for LatencySpike {
         let latency_ms = self.sample_latency_ms();
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "latency_spike",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             latency_ms = latency_ms,
             noise_type = ?self.noise_type,
+            dry_run = false,
             "latency spike injected",
         );
 
@@ -464,11 +474,13 @@ impl Fault for LatencySpike {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "latency_spike",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             latency_ms = latency_ms,
+            dry_run = true,
             "latency spike dry-run",
         );
 
@@ -604,11 +616,13 @@ impl BandwidthThrottle {
 impl Fault for BandwidthThrottle {
     fn inject(&self, ctx: &FaultContext) -> FaultResult {
         tracing::info!(
+            target: "malcolm",
             fault_type = "bandwidth_throttle",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             bytes_per_sec = self.bytes_per_sec,
+            dry_run = false,
             "bandwidth throttle injected",
         );
 
@@ -629,11 +643,13 @@ impl Fault for BandwidthThrottle {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "bandwidth_throttle",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             bytes_per_sec = self.bytes_per_sec,
+            dry_run = true,
             "bandwidth throttle dry-run",
         );
 
@@ -902,12 +918,7 @@ mod tests {
             .alpha(1.5)
             .intensity(0.9)
             .build();
-        // Access the injected FaultEvent to retrieve the intensity used.
-        let ctx = default_ctx("node-0");
-        let FaultResult::Injected(event) = fault.inject(&ctx) else {
-            panic!("expected Injected result");
-        };
-        let regime = classify(event.intensity, &profile);
+        let regime = classify(fault.intensity, &profile);
         assert_eq!(regime, Regime::Chaotic);
     }
 }

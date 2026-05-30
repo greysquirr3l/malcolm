@@ -10,57 +10,43 @@
 //! # Example
 //!
 //! ```rust
-//! use malcolm_lens::LensProvider;
-//! // Implementations (OllamaLens, AnthropicLens) will be added in T17.
-//! let _: Option<Box<dyn LensProvider>> = None;
+//! use malcolm_lens::{LensConfig, LensProvider, provider_from_config};
+//!
+//! let config = LensConfig::from_env().expect("config should parse");
+//! let _provider: Result<Box<dyn LensProvider>, _> = provider_from_config(config);
 //! ```
+//!
+//! # Worked Examples
+//!
+//! - [Post-mortem narrative](../examples/lens_postmortem.rs)
+//! - [Adaptive scenario suggestions](../examples/lens_suggest.rs)
+//! - [Replay divergence investigation](../examples/lens_divergence.rs)
 
-use thiserror::Error;
+mod analyzer;
+mod config;
+mod error;
+mod parser;
+mod prompt;
+mod provider;
+mod report;
 
-/// Errors that can occur in the lens layer.
-///
-/// # Example
-///
-/// ```rust
-/// use malcolm_lens::LensError;
-/// let err = LensError::NotImplemented;
-/// assert_eq!(err.to_string(), "not implemented");
-/// ```
-#[derive(Debug, Error)]
-pub enum LensError {
-    /// The requested operation has not been implemented yet.
-    // TODO(T17): expand with provider-specific variants
-    #[error("not implemented")]
-    NotImplemented,
-}
+#[cfg(feature = "anthropic")]
+mod anthropic;
+#[cfg(feature = "ollama")]
+mod ollama;
 
-/// Contract for LLM providers that can analyze a chaos scenario report.
-///
-/// Each provider (Ollama, Anthropic, etc.) implements this trait.
-/// The LLM is strictly advisory — never on the fault injection path.
-///
-/// # Example
-///
-/// ```rust
-/// use malcolm_lens::{LensProvider, LensError};
-///
-/// struct StubProvider;
-///
-/// impl LensProvider for StubProvider {
-///     fn analyze(&self, _report: &str) -> Result<String, LensError> {
-///         Err(LensError::NotImplemented)
-///     }
-/// }
-///
-/// let provider = StubProvider;
-/// assert!(provider.analyze("{}").is_err());
-/// ```
-// TODO(T17): expand with async variant, structured LensReport input/output
-pub trait LensProvider {
-    /// Analyze a serialized chaos scenario report and return a narrative.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LensError`] if the provider cannot process the report.
-    fn analyze(&self, report: &str) -> Result<String, LensError>;
-}
+pub use analyzer::{LensAnalyzer, LensAnalyzerBuilder};
+pub use config::{LensConfig, Provider};
+pub use error::LensError;
+pub use parser::ResponseParser;
+pub use prompt::{Directive, PromptBuilder};
+pub use provider::{LensProvider, provider_from_config};
+pub use report::{
+    AnomalyFlag, DivergenceExplanation, LensReport, NarrativeReport, ParseWarning,
+    ScenarioSuggestion, Severity,
+};
+
+#[cfg(feature = "anthropic")]
+pub use anthropic::AnthropicLens;
+#[cfg(feature = "ollama")]
+pub use ollama::OllamaLens;

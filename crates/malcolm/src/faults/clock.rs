@@ -141,6 +141,7 @@ impl Fault for ClockSkew {
         let drift_abs = drift_ms.abs();
         #[expect(
             clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
             reason = "drift_abs is bounded by drift_rate_ms_per_step * intensity, expected well within u64 range"
         )]
         let drift_abs_u64 = drift_abs as u64;
@@ -152,6 +153,7 @@ impl Fault for ClockSkew {
         };
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "clock_skew",
             node_id = %ctx.node_id,
             seed = self.seed,
@@ -159,6 +161,7 @@ impl Fault for ClockSkew {
             drift_ms = drift_ms,
             real_ms = real_ms,
             skewed_ms = skewed_ms,
+            dry_run = false,
             "clock skew injected",
         );
 
@@ -180,11 +183,13 @@ impl Fault for ClockSkew {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "clock_skew",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             max_drift_ms = max_drift,
+            dry_run = true,
             "clock skew dry-run",
         );
 
@@ -221,21 +226,21 @@ pub struct ClockSkewBuilder {
 impl ClockSkewBuilder {
     /// Set the RNG seed for deterministic noise generation.
     #[must_use]
-    pub fn seed(mut self, seed: u64) -> Self {
+    pub const fn seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
         self
     }
 
     /// Set the maximum drift magnitude per noise step in milliseconds.
     #[must_use]
-    pub fn drift_rate_ms_per_step(mut self, rate: f64) -> Self {
+    pub const fn drift_rate_ms_per_step(mut self, rate: f64) -> Self {
         self.drift_rate_ms_per_step = Some(rate);
         self
     }
 
     /// Set the normalised fault intensity in `[0.0, 1.0]`.
     #[must_use]
-    pub fn intensity(mut self, intensity: f64) -> Self {
+    pub const fn intensity(mut self, intensity: f64) -> Self {
         self.intensity = Some(intensity);
         self
     }
@@ -335,11 +340,13 @@ impl Fault for ClockFreeze {
         }
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "clock_freeze",
             node_id = %ctx.node_id,
             seed = self.seed,
             frozen_ms = frozen_ms,
             freeze_duration_ms = self.freeze_duration_ms,
+            dry_run = false,
             "clock freeze injected",
         );
 
@@ -361,11 +368,13 @@ impl Fault for ClockFreeze {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "clock_freeze",
             node_id = %ctx.node_id,
             seed = self.seed,
             frozen_ms = frozen_ms,
             freeze_duration_ms = self.freeze_duration_ms,
+            dry_run = true,
             "clock freeze dry-run",
         );
 
@@ -400,14 +409,14 @@ pub struct ClockFreezeBuilder {
 impl ClockFreezeBuilder {
     /// Set the RNG seed (recorded in the emitted [`FaultEvent`]).
     #[must_use]
-    pub fn seed(mut self, seed: u64) -> Self {
+    pub const fn seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
         self
     }
 
     /// Set the intended freeze duration in milliseconds.
     #[must_use]
-    pub fn freeze_duration_ms(mut self, ms: u64) -> Self {
+    pub const fn freeze_duration_ms(mut self, ms: u64) -> Self {
         self.freeze_duration_ms = Some(ms);
         self
     }
@@ -507,6 +516,7 @@ impl Fault for ClockJump {
 
         #[expect(
             clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
             reason = "jump_magnitude from LogNormal with typical mu/sigma is far below u64::MAX"
         )]
         let jump_ms = jump_magnitude as u64;
@@ -518,6 +528,7 @@ impl Fault for ClockJump {
         };
 
         tracing::warn!(
+            target: "malcolm",
             fault_type = "clock_jump",
             node_id = %ctx.node_id,
             seed = self.seed,
@@ -525,6 +536,7 @@ impl Fault for ClockJump {
             jump_ms = jump_ms,
             real_ms = real_ms,
             jumped_ms = jumped_ms,
+            dry_run = false,
             "clock jump injected — abrupt time discontinuity",
         );
 
@@ -552,11 +564,13 @@ impl Fault for ClockJump {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "clock_jump",
             node_id = %ctx.node_id,
             seed = self.seed,
             direction = ?self.direction,
             jump_magnitude = jump_magnitude,
+            dry_run = true,
             "clock jump dry-run",
         );
 
@@ -595,28 +609,28 @@ pub struct ClockJumpBuilder {
 impl ClockJumpBuilder {
     /// Set the RNG seed for deterministic jump sampling.
     #[must_use]
-    pub fn seed(mut self, seed: u64) -> Self {
+    pub const fn seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
         self
     }
 
     /// Set the log-space mean of the jump distribution.
     #[must_use]
-    pub fn mu(mut self, mu: f64) -> Self {
+    pub const fn mu(mut self, mu: f64) -> Self {
         self.mu = Some(mu);
         self
     }
 
     /// Set the log-space standard deviation of the jump distribution.
     #[must_use]
-    pub fn sigma(mut self, sigma: f64) -> Self {
+    pub const fn sigma(mut self, sigma: f64) -> Self {
         self.sigma = Some(sigma);
         self
     }
 
     /// Set the jump direction.
     #[must_use]
-    pub fn direction(mut self, direction: JumpDirection) -> Self {
+    pub const fn direction(mut self, direction: JumpDirection) -> Self {
         self.direction = Some(direction);
         self
     }

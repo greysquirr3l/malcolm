@@ -130,11 +130,13 @@ impl Fault for MemoryPressure {
         // _allocation is dropped here, releasing the simulated pressure.
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "memory_pressure",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             bytes_allocated = bytes,
+            dry_run = false,
             "memory pressure injected",
         );
 
@@ -174,11 +176,13 @@ impl Fault for MemoryPressure {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "memory_pressure",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.intensity,
             bytes_would_allocate = bytes,
+            dry_run = true,
             "memory pressure dry-run",
         );
 
@@ -333,6 +337,7 @@ impl Fault for CpuThrottle {
         }
 
         tracing::info!(
+            target: "malcolm",
             fault_type = "cpu_throttle",
             node_id = %ctx.node_id,
             seed = self.seed,
@@ -340,6 +345,7 @@ impl Fault for CpuThrottle {
             fraction = self.fraction,
             duration_ms = self.duration_ms,
             spin_ms = spin_ms,
+            dry_run = false,
             "CPU throttle injected",
         );
 
@@ -378,12 +384,14 @@ impl Fault for CpuThrottle {
         );
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "cpu_throttle",
             node_id = %ctx.node_id,
             seed = self.seed,
             intensity = self.fraction,
             fraction = self.fraction,
             duration_ms = self.duration_ms,
+            dry_run = true,
             "CPU throttle dry-run",
         );
 
@@ -508,11 +516,13 @@ impl<W: Write> Write for IoDegradationWriter<W> {
         let latency_ms = self.noise.next().unwrap_or(0.0).max(0.0);
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "io_degradation",
             direction = "write",
             seed = self.seed,
             latency_ms = latency_ms,
             bytes = buf.len(),
+            dry_run = false,
             "I/O degradation write latency injected",
         );
 
@@ -589,11 +599,13 @@ impl<R: Read> Read for IoDegradationReader<R> {
         let latency_ms = self.noise.next().unwrap_or(0.0).max(0.0);
 
         tracing::debug!(
+            target: "malcolm",
             fault_type = "io_degradation",
             direction = "read",
             seed = self.seed,
             latency_ms = latency_ms,
             bytes = buf.len(),
+            dry_run = false,
             "I/O degradation read latency injected",
         );
 
@@ -720,14 +732,14 @@ impl ResourceFaultSuiteBuilder {
 
     /// Set the memory pressure fault.
     #[must_use]
-    pub fn memory_pressure(mut self, mp: MemoryPressure) -> Self {
+    pub const fn memory_pressure(mut self, mp: MemoryPressure) -> Self {
         self.memory_pressure = Some(mp);
         self
     }
 
     /// Set the CPU throttle fault.
     #[must_use]
-    pub fn cpu_throttle(mut self, ct: CpuThrottle) -> Self {
+    pub const fn cpu_throttle(mut self, ct: CpuThrottle) -> Self {
         self.cpu_throttle = Some(ct);
         self
     }
@@ -786,8 +798,9 @@ mod tests {
 
         let result = fault.inject(&ctx);
 
-        let FaultResult::Injected(ref event) = result else {
-            panic!("expected Injected, got {result:?}");
+        assert!(matches!(result, FaultResult::Injected(_)));
+        let FaultResult::Injected(event) = result else {
+            return;
         };
         assert!(
             (event.intensity - 0.5).abs() < f64::EPSILON,
@@ -846,7 +859,7 @@ mod tests {
     fn io_degradation_writer_preserves_data() {
         // min_ms = max_ms = 0 so no sleep occurs in tests.
         let mut writer = IoDegradationWriter::new(Vec::<u8>::new(), 7, 0, 0);
-        writer.write_all(b"hello").expect("write failed");
+        assert!(writer.write_all(b"hello").is_ok());
         let output = writer.into_inner();
         assert_eq!(output, b"hello");
     }
@@ -856,7 +869,7 @@ mod tests {
         let inner = Cursor::new(b"world".to_vec());
         let mut reader = IoDegradationReader::new(inner, 7, 0, 0);
         let mut buf = [0u8; 5];
-        reader.read_exact(&mut buf).expect("read failed");
+        assert!(reader.read_exact(&mut buf).is_ok());
         assert_eq!(&buf, b"world");
     }
 
