@@ -1,8 +1,7 @@
 # malcolm
 
-![malcolm artwork](assets/img/malcom.png)
-
-## [Keenan McAteer](https://www.facebook.com/groups/150391231670295/user/100004935523934)
+<img src="assets/img/malcom.png" alt="malcolm artwork" />
+<p align="right"><sub>Credit: <a href="https://www.facebook.com/groups/150391231670295/user/100004935523934">Keenan McAteer</a></sub></p>
 
 > "Your scientists were so preoccupied with whether or not they could, they didn't stop to think if they should."
 > — Dr. Ian Malcolm
