@@ -120,21 +120,37 @@ impl ScenarioRecord {
     }
 
     /// Serialize this record to JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this record cannot be serialized to JSON.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
 
     /// Deserialize one record from JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `payload` is not valid JSON for [`ScenarioRecord`].
     pub fn from_json(payload: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(payload)
     }
 
     /// Serialize this record to bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this record cannot be serialized to JSON bytes.
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
 
     /// Deserialize one record from bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `bytes` are not valid JSON for [`ScenarioRecord`].
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }

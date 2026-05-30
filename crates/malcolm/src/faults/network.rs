@@ -778,6 +778,7 @@ impl NetworkFaultSuite {
     }
 
     /// Inject all faults in registration order, returning the collected results.
+    #[must_use]
     pub fn inject_all(&self, ctx: &FaultContext) -> Vec<FaultResult> {
         self.faults.iter().map(|f| f.inject(ctx)).collect()
     }

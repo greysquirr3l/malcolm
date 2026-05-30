@@ -105,6 +105,10 @@ pub struct ScenarioReport {
 
 impl ScenarioReport {
     /// Serialize this report to JSON for post-mortem workflows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this report cannot be serialized to JSON.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }

@@ -881,6 +881,7 @@ impl ByzantineSuite {
     }
 
     /// Inject all three faults in order and return the collected results.
+    #[must_use]
     pub fn inject_all(&self, ctx: &FaultContext) -> Vec<FaultResult> {
         vec![
             self.lying_node.inject(ctx),

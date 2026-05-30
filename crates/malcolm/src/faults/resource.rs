@@ -690,6 +690,7 @@ impl ResourceFaultSuite {
     }
 
     /// Inject both resource faults in order, returning the collected results.
+    #[must_use]
     pub fn inject_all(&self, ctx: &FaultContext) -> Vec<FaultResult> {
         vec![
             self.memory_pressure.inject(ctx),
