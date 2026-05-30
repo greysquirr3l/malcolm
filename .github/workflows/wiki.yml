@@ -1,0 +1,89 @@
+name: Handbook Wiki Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/book/**
+      - .github/workflows/wiki.yml
+      - .github/workflows/ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: handbook-wiki-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: Build mdBook and publish wiki pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install mdBook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+
+      - name: Build handbook
+        run: mdbook build docs/book
+
+      - name: Prepare wiki content
+        run: |
+          set -euo pipefail
+          rm -rf .wiki-src
+          mkdir -p .wiki-src
+
+          cp docs/book/src/*.md .wiki-src/
+          cp docs/book/src/index.md .wiki-src/Home.md
+
+          awk '
+            /^- \[/ {
+              if (match($0, /\[([^\]]+)\]\(([^)]+)\)/, m)) {
+                page = m[2]
+                sub(/\.md$/, "", page)
+                if (page == "index") {
+                  page = "Home"
+                }
+                printf("* [[%s|%s]]\n", m[1], page)
+              }
+            }
+          ' docs/book/src/SUMMARY.md > .wiki-src/_Sidebar.md
+
+          mkdir -p .wiki-src/html
+          cp -R book/. .wiki-src/html/
+
+      - name: Publish to repository wiki
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git"
+
+          rm -rf .wiki-repo
+          if ! git clone "$remote" .wiki-repo; then
+            echo "Could not clone wiki repository. Ensure wiki is enabled in repository settings." >&2
+            exit 1
+          fi
+
+          rsync -a --delete .wiki-src/ .wiki-repo/
+
+          cd .wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "No wiki changes to publish"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "docs: sync handbook from docs/book"
+          git push origin HEAD

@@ -1,0 +1,90 @@
+name: Auto Tag
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create version tag if missing
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Gate on release commit
+        id: gate
+        run: |
+          msg="$(git log -1 --pretty=%s)"
+          if [[ "$msg" == chore\(release\):* ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read workspace version
+        if: steps.gate.outputs.run == 'true'
+        id: version
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "malcolm") | .version')
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not determine version for crate malcolm" >&2
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag exists
+        if: steps.gate.outputs.run == 'true'
+        id: check-tag
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.gate.outputs.run == 'true' && steps.check-tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.version }}"
+          if git push origin "${{ steps.version.outputs.tag }}"; then
+            echo "Pushed ${{ steps.version.outputs.tag }}"
+            exit 0
+          fi
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "Tag ${{ steps.version.outputs.tag }} was created concurrently; continuing"
+            exit 0
+          fi
+          echo "Failed to push tag ${{ steps.version.outputs.tag }}" >&2
+          exit 1
+
+      - name: Tag already exists
+        if: steps.gate.outputs.run == 'true' && steps.check-tag.outputs.exists == 'true'
+        run: echo "Tag ${{ steps.version.outputs.tag }} already exists; skipping"
+
+      - name: Not a release commit
+        if: steps.gate.outputs.run == 'false'
+        run: echo "Skipping auto-tag; head commit is not a release commit"

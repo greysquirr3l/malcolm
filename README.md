@@ -17,7 +17,7 @@ malcolm is a standalone Rust chaos engineering library for fault injection and a
 
 ```toml
 [dev-dependencies]
-malcolm = "0.1"
+malcolm = "0.5"
 ```
 
 ## Scenario Composition
@@ -252,7 +252,7 @@ cargo run -p malcolm-lens --example lens_divergence
 
 Integration audit coverage:
 
-- `crates/malcolm-lens/tests/t23_integration_wiring.rs` exercises public API
+- `crates/malcolm-lens/tests/integration_wiring.rs` exercises public API
     wiring from `LensAnalyzer` through provider/parse boundaries.
     wiring from `LensAnalyzer` through provider/parse boundaries.
     wiring from `LensAnalyzer` through provider/parse boundaries.

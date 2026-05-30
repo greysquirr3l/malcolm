@@ -1,0 +1,21 @@
+[book]
+title = "malcolm"
+authors = ["Team Chaos"]
+description = "Comprehensive guide to using and operating the malcolm chaos engineering workspace"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../../book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/greysquirr3l/malcom"
+edit-url-template = "https://github.com/greysquirr3l/malcom/edit/main/docs/book/{path}"
+site-url = "/"
+
+[output.html.fold]
+enable = true
+level = 1
