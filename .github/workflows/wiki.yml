@@ -62,14 +62,36 @@ jobs:
       - name: Publish to repository wiki
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git"
 
+          # Ensure wiki is enabled before attempting clone/push.
+          gh repo edit "$REPO" --enable-wiki || true
+
+          has_wiki=$(gh api "repos/${REPO}" --jq '.has_wiki')
+          if [[ "$has_wiki" != "true" ]]; then
+            echo "Repository wiki is disabled. Enable wiki and re-run this workflow." >&2
+            exit 1
+          fi
+
           rm -rf .wiki-repo
-          if ! git clone "$remote" .wiki-repo; then
-            echo "Could not clone wiki repository. Ensure wiki is enabled in repository settings." >&2
+          cloned=false
+          for attempt in {1..8}; do
+            if git clone "$remote" .wiki-repo; then
+              cloned=true
+              break
+            fi
+            echo "Wiki clone attempt ${attempt}/8 failed; retrying..."
+            rm -rf .wiki-repo
+            sleep 10
+          done
+
+          if [[ "$cloned" != "true" ]]; then
+            echo "Could not clone wiki repository after retries." >&2
+            echo "If this is the first wiki publish, create one page manually in the GitHub UI and re-run." >&2
             exit 1
           fi
 
