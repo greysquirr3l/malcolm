@@ -63,4 +63,4 @@ clippy_full.txt
 chat_with_claude-2026-05-24.txt
 
 # mdbook generated output
-book/
+/book/

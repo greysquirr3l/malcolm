@@ -36,6 +36,20 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace -- -D warnings
 
+  docs-book:
+    name: Build mdBook docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install mdBook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+
+      - name: Build handbook
+        run: mdbook build docs/book
+
   no-std-check:
     name: Verify malcolm-core is no_std compatible
     runs-on: ubuntu-latest
