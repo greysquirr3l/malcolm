@@ -244,6 +244,11 @@ impl<K: KeystoreSecretProvider> PassphraseProvider for KeystorePassphraseProvide
 
 impl ScenarioEnvelope {
     /// Seal one scenario record into an authenticated encrypted envelope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serialization, key derivation, passphrase retrieval,
+    /// or encryption fails.
     pub fn seal(
         record: &ScenarioRecord,
         passphrase_provider: &dyn PassphraseProvider,
@@ -301,6 +306,11 @@ impl ScenarioEnvelope {
     }
 
     /// Open an envelope via interactive confirmation policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when confirmation is denied, passphrase retrieval fails,
+    /// decryption fails, or the decrypted record cannot be decoded.
     pub fn open_interactive(
         &self,
         confirmation_granted: bool,
@@ -327,6 +337,11 @@ impl ScenarioEnvelope {
     }
 
     /// Open an envelope in non-interactive mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no passphrase source is provided, passphrase
+    /// retrieval fails, decryption fails, or the decrypted record is invalid.
     pub fn open_non_interactive(
         &self,
         passphrase_provider: Option<&dyn PassphraseProvider>,
@@ -350,6 +365,10 @@ impl ScenarioEnvelope {
     }
 
     /// Serialize this envelope to a binary payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the envelope body cannot be serialized.
     pub fn to_bytes(&self) -> Result<Vec<u8>, EnvelopeError> {
         let body = EnvelopeBody {
             metadata: self.metadata.clone(),
@@ -369,6 +388,11 @@ impl ScenarioEnvelope {
     }
 
     /// Deserialize one envelope from binary payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `bytes` are truncated, use an unsupported format, or
+    /// cannot be deserialized into an envelope body.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EnvelopeError> {
         if bytes.len() < ENVELOPE_MAGIC.len() + 1 {
             return Err(EnvelopeError::Truncated);
