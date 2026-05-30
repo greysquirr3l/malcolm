@@ -1,108 +1,57 @@
-name: Handbook Wiki Publish
+name: Documentation
 
 on:
   push:
     branches: [main]
     paths:
       - docs/book/**
+      - docs/**
+      - crates/**
       - .github/workflows/wiki.yml
-      - .github/workflows/ci.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: handbook-wiki-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  build-and-publish:
-    name: Build mdBook and publish wiki pages
+  build:
+    name: Build mdBook
     runs-on: ubuntu-latest
+    env:
+      MDBOOK_VERSION: "0.4.43"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Install mdBook
-        uses: taiki-e/install-action@v2
-        with:
-          tool: mdbook
+        run: |
+          curl -sSL \
+            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C /usr/local/bin mdbook
+          mdbook --version
 
-      - name: Build handbook
+      - name: Build book
         run: mdbook build docs/book
 
-      - name: Prepare wiki content
-        run: |
-          set -euo pipefail
-          rm -rf .wiki-src
-          mkdir -p .wiki-src
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/book/book
 
-          cp docs/book/src/*.md .wiki-src/
-          cp docs/book/src/index.md .wiki-src/Home.md
-
-          awk '
-            /^- \[/ {
-              if (match($0, /\[([^\]]+)\]\(([^)]+)\)/, m)) {
-                page = m[2]
-                sub(/\.md$/, "", page)
-                if (page == "index") {
-                  page = "Home"
-                }
-                printf("* [[%s|%s]]\n", m[1], page)
-              }
-            }
-          ' docs/book/src/SUMMARY.md > .wiki-src/_Sidebar.md
-
-          mkdir -p .wiki-src/html
-          cp -R book/. .wiki-src/html/
-
-      - name: Publish to repository wiki
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.wiki.git"
-
-          has_wiki=$(gh api "repos/${REPO}" --jq '.has_wiki')
-          if [[ "$has_wiki" != "true" ]]; then
-            echo "::warning::Repository wiki is disabled. Enable wiki and re-run this workflow."
-            exit 0
-          fi
-
-          rm -rf .wiki-repo
-          cloned=false
-          for attempt in {1..8}; do
-            if git clone "$remote" .wiki-repo; then
-              cloned=true
-              break
-            fi
-            echo "Wiki clone attempt ${attempt}/8 failed; retrying..."
-            rm -rf .wiki-repo
-            sleep 10
-          done
-
-          if [[ "$cloned" != "true" ]]; then
-            echo "::warning::Could not clone wiki repository after retries."
-            echo "::warning::If this is the first wiki publish, create one page manually in the GitHub UI and re-run."
-            exit 0
-          fi
-
-          rsync -a --delete .wiki-src/ .wiki-repo/
-
-          cd .wiki-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if [[ -z "$(git status --porcelain)" ]]; then
-            echo "No wiki changes to publish"
-            exit 0
-          fi
-
-          git add -A
-          git commit -m "docs: sync handbook from docs/book"
-          git push origin HEAD
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
