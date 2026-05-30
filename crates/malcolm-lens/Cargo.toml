@@ -1,6 +1,6 @@
 [package]
 name = "malcolm-lens"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "LLM interpretability layer for malcolm chaos reports"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ keywords = ["chaos", "llm", "fault-injection", "testing", "ai"]
 categories = ["development-tools::testing", "simulation", "science"]
 
 [dependencies]
-malcolm = { path = "../malcolm", version = "0.5.0" }
+malcolm = { path = "../malcolm", version = "0.5.1" }
 thiserror = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

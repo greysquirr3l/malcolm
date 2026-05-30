@@ -159,23 +159,57 @@ jobs:
         run: |
           set -euo pipefail
 
+          is_published() {
+            crate="$1"
+            cargo search "$crate" --limit 1 2>/dev/null | grep -q "^${crate} = \"${RELEASE_VERSION}\""
+          }
+
+          wait_for_index() {
+            crate="$1"
+            for _ in {1..18}; do
+              if is_published "$crate"; then
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
           publish_if_missing() {
             crate="$1"
             manifest="$2"
 
-            if cargo search "$crate" --limit 1 2>/dev/null | grep -q "^${crate} = \"${RELEASE_VERSION}\""; then
+            if is_published "$crate"; then
               echo "${crate}@${RELEASE_VERSION} already published, skipping"
               return 0
             fi
 
-            cargo publish --manifest-path "$manifest" 2>&1 || {
-              if cargo search "$crate" --limit 1 2>/dev/null | grep -q "^${crate} = \"${RELEASE_VERSION}\""; then
-                echo "${crate}@${RELEASE_VERSION} confirmed published after index catch-up"
+            for attempt in {1..5}; do
+              if cargo publish --manifest-path "$manifest" --locked 2>&1 | tee /tmp/publish-${crate}.log; then
+                echo "${crate}@${RELEASE_VERSION} publish succeeded"
+                wait_for_index "$crate" || true
                 return 0
               fi
-              echo "Failed to publish ${crate}" >&2
-              return 1
-            }
+
+              if is_published "$crate"; then
+                echo "${crate}@${RELEASE_VERSION} already visible on crates.io after failed publish attempt"
+                return 0
+              fi
+
+              if rg -qi "already exists|already uploaded|already been uploaded" /tmp/publish-${crate}.log; then
+                echo "${crate}@${RELEASE_VERSION} appears already published"
+                wait_for_index "$crate" || true
+                return 0
+              fi
+
+              echo "Publish attempt ${attempt}/5 for ${crate} failed"
+              if [[ "${attempt}" -lt 5 ]]; then
+                sleep $((attempt * 15))
+              fi
+            done
+
+            echo "Failed to publish ${crate} after retries" >&2
+            return 1
           }
 
           publish_if_missing "malcolm-core" "crates/malcolm-core/Cargo.toml"

@@ -17,7 +17,7 @@ cargo clippy --workspace -- -D warnings
 
 ```toml
 [dev-dependencies]
-malcolm = "0.5"
+malcolm = "0.5.1"
 ```
 
 ## Build your first scenario
