@@ -104,6 +104,11 @@ struct EnvelopeBody {
 /// Source of passphrase material for envelope operations.
 pub trait PassphraseProvider: Send + Sync {
     /// Read passphrase bytes without logging secret material.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured passphrase source cannot be read,
+    /// returns invalid data, or resolves to an empty passphrase.
     fn get_passphrase(&self) -> Result<Vec<u8>, EnvelopeError>;
 
     /// Stable provider label for telemetry.
@@ -200,6 +205,11 @@ impl PassphraseProvider for CommandPassphraseProvider {
 /// Trait for keystore-backed secret retrieval.
 pub trait KeystoreSecretProvider: Send + Sync {
     /// Retrieve raw secret bytes by key identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the keystore backend cannot resolve `key_name` or
+    /// cannot return the secret material.
     fn fetch_secret(&self, key_name: &str) -> Result<Vec<u8>, EnvelopeError>;
 }
 
