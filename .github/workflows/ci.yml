@@ -100,17 +100,21 @@ jobs:
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
-        with:
-          tool: cargo-deny
+        # Pin a specific cargo-deny release. 0.16.3+ recognises the SPDX
+        # `Unicode-3.0` identifier (used by the webpki-root-certs Mozilla
+        # CA bundle), and 0.17+ parses CVSS 4.0 scoring which the
+        # current RustSec advisory database uses.
+        # Use `cargo install` rather than `taiki-e/install-action`:
+        # the latter embeds a cargo-deny manifest parser that lags
+        # behind upstream and chokes on the 0.19.x package.edition
+        # field.
+        run: cargo install cargo-deny --locked --version 0.19.9
 
       - name: Run cargo-deny
         run: cargo deny check
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
-        with:
-          tool: cargo-audit
+        run: cargo install cargo-audit --locked
 
       - name: Run cargo-audit
         run: cargo audit
