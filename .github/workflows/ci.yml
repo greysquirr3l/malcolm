@@ -100,9 +100,13 @@ jobs:
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
 
       - name: Install cargo-deny
+        # Pin a specific cargo-deny release. Newer versions support the
+        # `Unicode-3.0` SPDX identifier that webpki-root-certs uses; the
+        # default "latest" installed by taiki-e/install-action resolves
+        # to a 0.14.x build that rejects `Unicode-3.0` as an unknown term.
         uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
         with:
-          tool: cargo-deny
+          tool: cargo-deny@0.16.3
 
       - name: Run cargo-deny
         run: cargo deny check
