@@ -1,41 +1,40 @@
-name: Auto Tag
+name: Auto-tag on release merge
+
+# Triggered by the CI workflow completing successfully on the main
+# branch. The release workflow is dispatched explicitly below because
+# GITHUB_TOKEN-created tags do not retrigger workflows.
 
 on:
   workflow_run:
     workflows: ["CI"]
-    branches: [main]
     types: [completed]
 
 permissions:
-  contents: write
+  contents: read
 
+# One auto-tag run per release commit. cancel-in-progress=false so a
+# slow run does not get reaped by a re-trigger.
 concurrency:
   group: auto-tag-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   tag:
-    name: Create version tag if missing
+    name: Push version tag if missing
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # Check out main rather than the workflow_run head_sha: a
+      # workflow_run event carries the SHA that triggered the upstream
+      # workflow, but we already gate on head_branch == 'main', so main's
+      # HEAD is the merge commit and the tag/commit we operate on.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          # SECURITY: this SHA comes from a prior `workflow_run` CI
-          # invocation. It has already been validated by the CI
-          # pipeline against the protected `main` branch before
-          # reaching this workflow. The OS-Scorecard "Dangerous
-          # Workflow" check still flags this pattern; the standard
-          # mitigation is `persist-credentials: false` so the
-          # checked-out repo cannot push to itself with leaked creds.
+          ref: main
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Gate on release commit
         id: gate
@@ -72,16 +71,20 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create and push tag
+      - name: Push tag
         if: steps.gate.outputs.run == 'true' && steps.check-tag.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.version }}"
           if git push origin "${{ steps.version.outputs.tag }}"; then
             echo "Pushed ${{ steps.version.outputs.tag }}"
             exit 0
           fi
+          # Manual push raced us; treat as success.
           if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
             echo "Tag ${{ steps.version.outputs.tag }} was created concurrently; continuing"
             exit 0
@@ -89,10 +92,21 @@ jobs:
           echo "Failed to push tag ${{ steps.version.outputs.tag }}" >&2
           exit 1
 
+      # GITHUB_TOKEN-pushed tags do not retrigger workflow runs, so
+      # dispatch the release workflow explicitly.
+      - name: Trigger release workflow
+        if: steps.gate.outputs.run == 'true' && steps.check-tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release.yml \
+            --ref "${{ steps.version.outputs.tag }}" \
+            -f tag="${{ steps.version.outputs.tag }}"
+
       - name: Tag already exists
         if: steps.gate.outputs.run == 'true' && steps.check-tag.outputs.exists == 'true'
         run: echo "Tag ${{ steps.version.outputs.tag }} already exists; skipping"
 
       - name: Not a release commit
-        if: steps.gate.outputs.run == 'false'
+        if: steps.gate.outputs.run != 'true'
         run: echo "Skipping auto-tag; head commit is not a release commit"

@@ -1,13 +1,23 @@
 name: Fuzz
 
+# Best-effort weekly cargo-fuzz run. Crashes are uploaded as
+# artifacts for manual triage; the run is non-blocking (`continue-
+# on-error: true`) so a single crash does not red-light the
+# workflow.
+
 on:
   schedule:
-    # Run weekly — fuzzing in CI is best-effort, not a gate.
     - cron: "17 3 * * 0"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# One fuzz run at a time; new schedule runs cancel any in-flight
+# run from the previous week.
+concurrency:
+  group: fuzz-${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   fuzz:
@@ -24,10 +34,10 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # nightly
+        uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5

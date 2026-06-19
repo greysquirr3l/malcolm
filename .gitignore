@@ -55,8 +55,9 @@ $RECYCLE.BIN/
 .gh/
 *.orig
 
-.markdownlint.json
-.markdownlintignore
+# Markdownlint config is committed so the CI lint contract matches
+# the local dev contract. The .gitignore entries below were left in
+# for safety while we figure out which to remove.
 
 clippy_errors.txt
 clippy_full.txt
