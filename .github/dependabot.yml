@@ -1,0 +1,44 @@
+# Dependabot configuration for the malcolm workspace.
+#
+# Enabling Dependabot satisfies the OpenSSF Scorecard
+# "Dependency-Update-Tool" check and keeps the GitHub Actions and Cargo
+# dependency trees up to date automatically.
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # Match every workflow that pins actions by SHA so Dependabot
+    # updates the SHA + comment together.
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "cargo"
+    # Group minor and patch updates into single PRs to keep review
+    # load low; majors are kept separate.
+    groups:
+      minor-and-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Don't bump the rust-version floor automatically — that is a
+      # human-curated decision.
+      - dependency-name: "rust-version"
