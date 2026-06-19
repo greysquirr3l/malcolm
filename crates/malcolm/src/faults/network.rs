@@ -1,6 +1,6 @@
 //! Network fault layer: partition, packet loss, latency spike, bandwidth throttle.
 //!
-//! Each fault type implements the [`Fault`](crate::fault::Fault) port trait.
+//! Each fault type implements the [`Fault`] port trait.
 //! Builders use an options-struct pattern to apply defaults at `build()` time.
 //!
 //! # Example

@@ -178,6 +178,29 @@ cargo run -p malcolm --example async_service --features tokio
 - `async_service` shows network fault injection around a mock HTTP client using
     a Tokio runtime.
 
+## Scenario Runner CLI
+
+`malcolm-run` is a built-in binary that runs a named preset from the command
+line, prints the JSON report, and optionally records the run as a
+`ScenarioRecord` for later replay.
+
+```bash
+# Show every available preset.
+cargo run -p malcolm --bin malcolm-run -- --list-presets
+
+# Run a preset with a custom seed and node id.
+cargo run -p malcolm --bin malcolm-run -- --preset flaky_net --seed 7 --node edge-0
+
+# Dry-run mode emits the would-inject plan without touching state.
+cargo run -p malcolm --bin malcolm-run -- --preset slow_disk --dry-run
+
+# Persist a run record for later replay (.yaml or .json from extension).
+cargo run -p malcolm --bin malcolm-run -- --preset byzantine_cluster --record run.yaml
+```
+
+Available presets: `flaky_net`, `slow_disk`, `byzantine_cluster`, `clock_drift`,
+`memory_pressure`. See `malcolm::presets` for the public Rust API.
+
 ## malcolm-lens Provider Scaffold
 
 `malcolm-lens` now ships a feature-gated provider scaffold backed by
@@ -256,8 +279,6 @@ cargo run -p malcolm-lens --example lens_divergence
 Integration audit coverage:
 
 - `crates/malcolm-lens/tests/integration_wiring.rs` exercises public API
-    wiring from `LensAnalyzer` through provider/parse boundaries.
-    wiring from `LensAnalyzer` through provider/parse boundaries.
     wiring from `LensAnalyzer` through provider/parse boundaries.
 
 ## License

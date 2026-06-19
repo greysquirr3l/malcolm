@@ -247,6 +247,7 @@ pub fn classify(intensity: f64, profile: &BifurcationProfile) -> Regime {
 #[cfg(test)]
 mod tests {
     use super::{BifurcationProfile, Regime, classify};
+    use proptest::prelude::*;
 
     // ── network_partition ────────────────────────────────────────────────────
 
@@ -389,5 +390,50 @@ mod tests {
             Regime::Chaotic => 2,
             _ => 99,
         };
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(256))]
+
+        // Exhaustively test classify over the whole input range. Threshold and
+        // sensitivity_window are bounded to positive, sane values; intensity is
+        // any finite f64 (including negatives and values > 1.0).
+        #[test]
+        fn classify_is_total_and_window_respecting(
+            threshold in 0.01_f64..=2.0_f64,
+            window in 0.001_f64..=1.0_f64,
+            intensity in -10.0_f64..=10.0_f64,
+        ) {
+            let p = BifurcationProfile {
+                threshold,
+                sensitivity_window: window,
+                label: "synthetic",
+            };
+            let regime = classify(intensity, &p);
+            let half = window / 2.0;
+            let lower = threshold - half;
+            let upper = threshold + half;
+            let expected = if intensity < lower {
+                Regime::Stable
+            } else if intensity > upper {
+                Regime::Chaotic
+            } else {
+                Regime::Sensitive
+            };
+            prop_assert_eq!(regime, expected);
+        }
+
+        #[test]
+        fn classify_at_threshold_is_sensitive(
+            threshold in 0.05_f64..=1.5_f64,
+            window in 0.001_f64..=0.5_f64,
+        ) {
+            let p = BifurcationProfile {
+                threshold,
+                sensitivity_window: window,
+                label: "synthetic",
+            };
+            prop_assert_eq!(classify(threshold, &p), Regime::Sensitive);
+        }
     }
 }

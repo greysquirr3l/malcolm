@@ -1,3 +1,8 @@
+//! Contract tests for the public `malcolm` examples.
+//!
+//! These tests pin the behaviour that `simulation`, `replay_demo`, and the
+//! async service example must guarantee from a consumer's perspective.
+
 use std::error::Error;
 
 use malcolm::fault::FaultContext;

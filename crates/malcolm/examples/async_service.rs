@@ -1,3 +1,5 @@
+//! Async HTTP client wrapped with network fault injection narration.
+
 #[cfg(feature = "tokio")]
 mod runtime {
     use std::time::Duration;

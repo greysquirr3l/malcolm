@@ -1,3 +1,5 @@
+//! Deterministic state-machine stress scenario driven by `ChaosScenario`.
+
 use malcolm::fault::FaultContext;
 use malcolm::faults::resource::CpuThrottle;
 use malcolm::scenario::ChaosScenario;

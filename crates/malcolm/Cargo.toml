@@ -2,12 +2,16 @@
 name = "malcolm"
 version = "0.5.1"
 edition = "2024"
+rust-version = "1.85"
 description = "Chaos engineering fault injection library"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/greysquirr3l/malcom"
 readme = "../../README.md"
 keywords = ["chaos", "fault-injection", "distributed-systems", "testing", "simulation"]
 categories = ["development-tools::testing", "algorithms", "simulation"]
+
+[lints]
+workspace = true
 
 [dependencies]
 malcolm-core = { path = "../malcolm-core", version = "0.5.1" }
@@ -16,6 +20,7 @@ thiserror = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
 chacha20poly1305 = "0.10"
 argon2 = "0.5"
@@ -27,7 +32,17 @@ features = ["time", "rt"]
 
 [dev-dependencies]
 tracing-test = "0.2"
+proptest = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]
 default = []
 tokio = ["dep:tokio"]
+
+[[bench]]
+name = "core_math"
+harness = false
+
+[[bench]]
+name = "envelope"
+harness = false

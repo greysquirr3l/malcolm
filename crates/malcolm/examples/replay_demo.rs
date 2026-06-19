@@ -1,3 +1,5 @@
+//! End-to-end replay demo: build, record, serialize, reload, and verify.
+
 use malcolm::fault::FaultContext;
 use malcolm::faults::network::PacketLoss;
 use malcolm::malcolm;

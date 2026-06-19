@@ -20,7 +20,7 @@ impl OllamaLens {
     ///
     /// # Errors
     ///
-    /// Returns [`LensError::Provider`] if the underlying Rig client cannot be created.
+    /// Returns [`LensError::ProviderError`] if the underlying Rig client cannot be created.
     pub fn from_config(config: LensConfig) -> Result<Self, LensError> {
         let mut builder = ollama::Client::builder().api_key("");
         if let Some(base_url) = config.base_url.as_deref() {

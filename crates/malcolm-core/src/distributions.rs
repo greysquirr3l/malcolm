@@ -167,11 +167,76 @@ fn box_muller(rng: &mut impl RngCore) -> f64 {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
+    use proptest::prelude::*;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
 
     const N: usize = 10_000;
     const N_F64: f64 = 10_000.0;
+
+    proptest! {
+        // alpha in (1.0, 5.0] is the natural range for a normalizable power-law.
+        // x_min in (0.1, 100.0] covers the realistic fault-scale range.
+        // mu and sigma cover the realistic log-normal parameter space.
+        // `seed` is bounded so the test stays deterministic across runs.
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn power_law_samples_are_at_least_one(alpha in 1.01_f64..=5.0_f64, seed in 0_u64..=10_000) {
+            let dist = PowerLaw { alpha };
+            let mut rng = SmallRng::seed_from_u64(seed);
+            for _ in 0..32 {
+                let x = dist.sample(&mut rng);
+                prop_assert!(x.is_finite(), "PowerLaw returned non-finite sample: {x}");
+                prop_assert!(x >= 1.0, "PowerLaw sample {x} below x_min=1.0 for alpha={alpha}");
+            }
+        }
+
+        #[test]
+        fn pareto_samples_are_at_least_x_min(
+            alpha in 0.1_f64..=5.0_f64,
+            x_min in 0.001_f64..=100.0_f64,
+            seed in 0_u64..=10_000,
+        ) {
+            let dist = Pareto { alpha, x_min };
+            let mut rng = SmallRng::seed_from_u64(seed);
+            for _ in 0..32 {
+                let x = dist.sample(&mut rng);
+                prop_assert!(x.is_finite(), "Pareto returned non-finite sample: {x}");
+                prop_assert!(x >= x_min, "Pareto sample {x} below x_min={x_min}");
+            }
+        }
+
+        #[test]
+        fn lognormal_samples_are_positive(
+            mu in -2.0_f64..=2.0_f64,
+            sigma in 0.01_f64..=2.0_f64,
+            seed in 0_u64..=10_000,
+        ) {
+            let dist = LogNormal { mu, sigma };
+            let mut rng = SmallRng::seed_from_u64(seed);
+            for _ in 0..32 {
+                let x = dist.sample(&mut rng);
+                prop_assert!(x.is_finite(), "LogNormal returned non-finite sample: {x}");
+                prop_assert!(x > 0.0, "LogNormal sample {x} is non-positive");
+            }
+        }
+
+        #[test]
+        fn sampling_is_deterministic_for_same_seed(
+            alpha in 1.1_f64..=4.0_f64,
+            seed in 0_u64..=10_000,
+        ) {
+            let dist = PowerLaw { alpha };
+            let mut a = SmallRng::seed_from_u64(seed);
+            let mut b = SmallRng::seed_from_u64(seed);
+            for _ in 0..8 {
+                let x = dist.sample(&mut a);
+                let y = dist.sample(&mut b);
+                prop_assert!((x - y).abs() < f64::EPSILON, "{x} != {y}");
+            }
+        }
+    }
 
     /// Hill estimator for the power-law exponent:
     /// `alpha_hat = 1 + n / sum(ln(x_i / x_min))`, `x_min` = 1.
