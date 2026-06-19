@@ -23,7 +23,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
+          # SECURITY: this SHA comes from a prior `workflow_run` CI
+          # invocation. It has already been validated by the CI
+          # pipeline against the protected `main` branch before
+          # reaching this workflow. The OS-Scorecard "Dangerous
+          # Workflow" check still flags this pattern; the standard
+          # mitigation is `persist-credentials: false` so the
+          # checked-out repo cannot push to itself with leaked creds.
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Rust toolchain
