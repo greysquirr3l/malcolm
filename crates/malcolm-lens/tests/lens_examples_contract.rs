@@ -1,3 +1,8 @@
+//! Contract tests for the `malcolm-lens` example support helpers.
+//!
+//! These tests pin the behaviour of the shared `ollama_guard` module used by
+//! the runnable example binaries.
+
 #[path = "../examples/support/ollama_guard.rs"]
 mod ollama_guard;
 

@@ -1,0 +1,37 @@
+[workspace]
+
+[package]
+name = "malcolm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+malcolm_core = { path = "../crates/malcolm-core", package = "malcolm-core" }
+malcolm = { path = "../crates/malcolm", package = "malcolm" }
+malcolm_lens = { path = "../crates/malcolm-lens", package = "malcolm-lens", features = ["ollama"] }
+
+[[bin]]
+name = "classify"
+path = "fuzz_targets/classify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "envelope_from_bytes"
+path = "fuzz_targets/envelope_from_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "response_parser"
+path = "fuzz_targets/response_parser.rs"
+test = false
+doc = false
+bench = false

@@ -6,7 +6,7 @@
 //!
 //! # Important
 //!
-//! These faults only affect code that uses [`MalcolmClock`](crate::fault::MalcolmClock)
+//! These faults only affect code that uses [`MalcolmClock`]
 //! to read time. They do **not** modify the system clock.
 //!
 //! # Primitives

@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use crate::fault::FaultContext;
 use crate::scenario::{ChaosScenario, ScenarioEvent, ScenarioRegime, ScenarioReport};
 
+/// Sealed, authenticated-encrypted telemetry envelopes for scenario records.
 pub mod envelope;
 
 /// Serializable snapshot of one topology edge.
@@ -153,6 +154,28 @@ impl ScenarioRecord {
     /// Returns an error if `bytes` are not valid JSON for [`ScenarioRecord`].
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
+    }
+
+    /// Serialize this record to YAML.
+    ///
+    /// YAML is a friendlier format for operator-edited scenario records than
+    /// JSON: comments are allowed, quoting is more lenient, and the output
+    /// diffs cleanly in code review.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this record cannot be serialized to YAML.
+    pub fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
+        serde_yaml::to_string(self)
+    }
+
+    /// Deserialize one record from YAML.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `payload` is not valid YAML for [`ScenarioRecord`].
+    pub fn from_yaml(payload: &str) -> Result<Self, serde_yaml::Error> {
+        serde_yaml::from_str(payload)
     }
 
     /// Verify deterministic integrity tag.
@@ -348,5 +371,22 @@ mod tests {
             return;
         };
         assert_eq!(record, decoded_record);
+    }
+
+    #[test]
+    fn scenario_record_yaml_roundtrip_is_lossless() {
+        let scenario = make_scenario();
+        let mut ctx = make_ctx();
+        let record = RecordingHarness::new(&scenario).record(&mut ctx);
+
+        let yaml = record.to_yaml().expect("serialize yaml");
+        let decoded = ScenarioRecord::from_yaml(&yaml).expect("deserialize yaml");
+        assert_eq!(record, decoded);
+    }
+
+    #[test]
+    fn scenario_record_yaml_rejects_garbage() {
+        let result = ScenarioRecord::from_yaml("this: is_not_a_scenario_record: -");
+        assert!(result.is_err());
     }
 }

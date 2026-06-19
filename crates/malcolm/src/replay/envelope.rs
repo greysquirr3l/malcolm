@@ -39,57 +39,77 @@ pub struct EnvelopeMetadata {
     pub sealed_at_ms: u64,
 }
 
+/// Errors produced by [`ScenarioEnvelope`] operations and passphrase providers.
 #[derive(Debug, thiserror::Error)]
 pub enum EnvelopeError {
+    /// Envelope magic bytes do not match the `MENV` prefix.
     #[error("invalid envelope magic")]
     InvalidMagic,
 
+    /// Envelope version is not understood by this build.
     #[error("unsupported envelope version: {0}")]
     UnsupportedVersion(u8),
 
+    /// Envelope payload is shorter than the minimum header.
     #[error("envelope payload is truncated")]
     Truncated,
 
+    /// Envelope payload could not be serialized to bytes.
     #[error("failed to serialize envelope payload: {0}")]
     Serialize(String),
 
+    /// Envelope payload could not be parsed from bytes.
     #[error("failed to deserialize envelope payload: {0}")]
     Deserialize(String),
 
+    /// Argon2id key derivation failed (out of memory or invalid parameters).
     #[error("failed to derive encryption key")]
     KeyDerivation,
 
+    /// ChaCha20-Poly1305 encryption failed.
     #[error("envelope encryption failed")]
     Encrypt,
 
+    /// ChaCha20-Poly1305 authentication failed (tamper or wrong key).
     #[error("envelope authentication failed")]
     Decrypt,
 
+    /// Deliberate-open policy denied the operation before decryption.
     #[error("policy denied open operation: {0}")]
     PolicyDenied(&'static str),
 
+    /// Non-interactive open requested without a configured passphrase source.
     #[error("missing passphrase source")]
     MissingPassphraseSource,
 
+    /// Configured passphrase source returned no usable material.
     #[error("passphrase source returned empty material")]
     EmptyPassphrase,
 
+    /// Required environment variable for a passphrase provider was not set.
     #[error("failed to read passphrase from environment variable: {0}")]
     MissingEnvVar(String),
 
+    /// External command for a passphrase provider exited with a non-zero status.
     #[error("passphrase command failed with status: {0}")]
     CommandFailed(String),
 
+    /// Underlying keystore backend returned an error.
     #[error("keystore error: {0}")]
     Keystore(String),
 
+    /// Decrypted payload could not be parsed as a [`ScenarioRecord`].
     #[error("failed to decode scenario record: {0}")]
     RecordDecode(String),
 }
 
+/// Distinguishes deliberate-open policy modes for [`ScenarioEnvelope::open_interactive`]
+/// and [`ScenarioEnvelope::open_non_interactive`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenMode {
+    /// Open requested with explicit operator confirmation.
     Interactive,
+    /// Open requested in automation, without confirmation.
     NonInteractive,
 }
 
@@ -121,6 +141,7 @@ pub struct EnvPassphraseProvider {
 }
 
 impl EnvPassphraseProvider {
+    /// Build a provider that reads the passphrase from the named environment variable.
     #[must_use]
     pub fn new(env_var: impl Into<String>) -> Self {
         Self {
@@ -160,6 +181,8 @@ pub struct CommandPassphraseProvider {
 }
 
 impl CommandPassphraseProvider {
+    /// Build a provider that runs `program` with `args` and reads the trimmed
+    /// stdout as the passphrase material.
     #[must_use]
     pub fn new(program: impl Into<String>, args: impl IntoIterator<Item = String>) -> Self {
         Self {
@@ -220,6 +243,8 @@ pub struct KeystorePassphraseProvider<K: KeystoreSecretProvider> {
 }
 
 impl<K: KeystoreSecretProvider> KeystorePassphraseProvider<K> {
+    /// Build a provider that asks the supplied keystore for the secret under
+    /// `key_name` and uses the returned bytes as passphrase material.
     #[must_use]
     pub fn new(key_name: impl Into<String>, keystore: K) -> Self {
         Self {

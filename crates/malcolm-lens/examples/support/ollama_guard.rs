@@ -1,19 +1,21 @@
+//! Shared helpers for the `malcolm-lens` example binaries.
+
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 
-pub fn current_base_url() -> String {
+pub(crate) fn current_base_url() -> String {
     std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| DEFAULT_OLLAMA_BASE_URL.to_owned())
 }
 
-pub fn provider_from_env() -> String {
+pub(crate) fn provider_from_env() -> String {
     std::env::var("MALCOLM_LENS_PROVIDER")
         .unwrap_or_else(|_| "ollama".to_owned())
         .to_ascii_lowercase()
 }
 
-pub fn ollama_reachable(base_url: &str, timeout: Duration) -> bool {
+pub(crate) fn ollama_reachable(base_url: &str, timeout: Duration) -> bool {
     let Some(endpoint) = endpoint_from_base_url(base_url) else {
         return false;
     };

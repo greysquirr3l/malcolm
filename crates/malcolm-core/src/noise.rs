@@ -264,6 +264,7 @@ impl<I: Iterator<Item = f64>> Iterator for ScaledNoise<I> {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
+    use proptest::prelude::*;
 
     /// Compute lag-1 (Pearson) autocorrelation of `samples`.
     #[expect(
@@ -329,5 +330,58 @@ mod tests {
             samples.iter().all(|&v| (10.0_f64..=200.0).contains(&v)),
             "ScaledNoise must map all outputs into [10.0, 200.0]"
         );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        #[test]
+        fn pink_noise_is_deterministic(seed in 0_u64..=10_000) {
+            let a: Vec<f64> = PinkNoise::new(seed).take(64).collect();
+            let b: Vec<f64> = PinkNoise::new(seed).take(64).collect();
+            prop_assert_eq!(a, b);
+        }
+
+        #[test]
+        fn brown_noise_is_deterministic(seed in 0_u64..=10_000) {
+            let a: Vec<f64> = BrownNoise::new(seed).take(64).collect();
+            let b: Vec<f64> = BrownNoise::new(seed).take(64).collect();
+            prop_assert_eq!(a, b);
+        }
+
+        #[test]
+        fn brown_noise_clamps_to_range(
+            seed in 0_u64..=10_000,
+            min in -1.0e3_f64..=0.0_f64,
+            max_delta in 0.001_f64..=1.0e3_f64,
+        ) {
+            let max = min + max_delta;
+            let samples: Vec<f64> = BrownNoise::with_range(seed, min, max).take(2_000).collect();
+            for v in &samples {
+                prop_assert!(v.is_finite(), "BrownNoise produced non-finite sample: {v}");
+                prop_assert!(
+                    *v >= min && *v <= max,
+                    "BrownNoise sample {v} outside [{min}, {max}]"
+                );
+            }
+        }
+
+        #[test]
+        fn scaled_noise_stays_in_bounds(
+            seed in 0_u64..=10_000,
+            min in 0.0_f64..=500.0_f64,
+            max_delta in 0.001_f64..=500.0_f64,
+        ) {
+            let max = min + max_delta;
+            let pink = PinkNoise::new(seed);
+            let samples: Vec<f64> = ScaledNoise::new(pink, min, max).take(200).collect();
+            for v in &samples {
+                prop_assert!(v.is_finite(), "ScaledNoise produced non-finite sample: {v}");
+                prop_assert!(
+                    *v >= min && *v <= max,
+                    "ScaledNoise sample {v} outside [{min}, {max}]"
+                );
+            }
+        }
     }
 }

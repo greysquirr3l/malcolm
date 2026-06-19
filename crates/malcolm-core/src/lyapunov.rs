@@ -183,6 +183,7 @@ impl SensitivityMap {
 #[cfg(test)]
 mod tests {
     use super::{LyapunovScorer, SensitivityMap};
+    use proptest::prelude::*;
 
     #[test]
     fn chaotic_regime_positive_lambda() {
@@ -251,5 +252,58 @@ mod tests {
         let curve = map.compute(500);
         assert_eq!(curve.len(), 1);
         assert!(curve.first().is_some_and(|p| (p.0 - 3.9).abs() < 1e-10));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn compute_is_deterministic(
+            r in 0.5_f64..=4.0_f64,
+            n in 50_usize..=2_000_usize,
+        ) {
+            let a = LyapunovScorer::compute(r, n);
+            let b = LyapunovScorer::compute(r, n);
+            // Either both NaN (acceptable for pathological inputs) or exactly equal.
+            if a.is_nan() {
+                prop_assert!(b.is_nan());
+            } else {
+                prop_assert!((a - b).abs() < f64::EPSILON);
+            }
+        }
+
+        #[test]
+        fn compute_handles_zero_iterations(r in 0.5_f64..=4.0_f64) {
+            // 0 iterations must not panic and must return 0.0 by contract.
+            let result = LyapunovScorer::compute(r, 0);
+            prop_assert!(result.abs() < f64::EPSILON, "got {result}");
+        }
+
+        #[test]
+        fn chaotic_end_of_curve_is_positive(n in 1_000_usize..=2_000_usize) {
+            // r = 4.0 is the canonical chaotic endpoint of the logistic map; λ ≈ 0.693.
+            let lambda = LyapunovScorer::compute(4.0, n);
+            prop_assert!(
+                lambda > 0.4,
+                "expected λ > 0.4 at r=4.0 (chaotic regime), got {lambda}"
+            );
+        }
+
+        #[test]
+        fn stable_fixed_point_is_negative(n in 1_000_usize..=2_000_usize) {
+            // r = 2.0 is the basin of the fixed point x = 0.5; λ is strongly negative.
+            let lambda = LyapunovScorer::compute(2.0, n);
+            prop_assert!(
+                lambda < -0.2,
+                "expected λ < -0.2 at r=2.0 (stable fixed point), got {lambda}"
+            );
+        }
+
+        #[test]
+        fn sensitivity_map_steps_count_matches(steps in 1_usize..=50_usize) {
+            let map = SensitivityMap::new(1.0, 4.0, steps);
+            let curve = map.compute(200);
+            prop_assert_eq!(curve.len(), steps);
+        }
     }
 }

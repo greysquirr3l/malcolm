@@ -1,0 +1,46 @@
+name: Fuzz
+
+on:
+  schedule:
+    # Run weekly — fuzzing in CI is best-effort, not a gate.
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: cargo-fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - classify
+          - envelope_from_bytes
+          - response_parser
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run ${{ matrix.target }} for 60s
+        continue-on-error: true
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- -max_total_time=60
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-crashes
+          path: fuzz/artifacts/${{ matrix.target }}/
+          retention-days: 7
