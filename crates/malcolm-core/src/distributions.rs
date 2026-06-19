@@ -70,7 +70,7 @@ impl Default for PowerLaw {
 impl DistributionSampler for PowerLaw {
     /// Draw one sample: `x = (1 - u)^(-1 / (alpha - 1))`.
     fn sample(&self, rng: &mut impl RngCore) -> f64 {
-        let u: f64 = rng.r#gen::<f64>();
+        let u: f64 = rng.random::<f64>();
         let exponent = -1.0 / (self.alpha - 1.0);
         libm::pow(1.0 - u, exponent)
     }
@@ -108,7 +108,7 @@ pub struct Pareto {
 impl DistributionSampler for Pareto {
     /// Draw one sample: `x = x_min * (1 - u)^(-1 / alpha)`.
     fn sample(&self, rng: &mut impl RngCore) -> f64 {
-        let u: f64 = rng.r#gen::<f64>();
+        let u: f64 = rng.random::<f64>();
         self.x_min * libm::pow(1.0 - u, -1.0 / self.alpha)
     }
 }
@@ -156,8 +156,8 @@ impl DistributionSampler for LogNormal {
 /// `Z = sqrt(-2 ln U1) * cos(2π U2)` where `U1, U2 ~ U(0, 1)`.
 /// `U1` is clamped to `[f64::EPSILON, 1)` to avoid `log(0)`.
 fn box_muller(rng: &mut impl RngCore) -> f64 {
-    let u1: f64 = rng.r#gen::<f64>().max(f64::EPSILON);
-    let u2: f64 = rng.r#gen::<f64>();
+    let u1: f64 = rng.random::<f64>().max(f64::EPSILON);
+    let u2: f64 = rng.random::<f64>();
     libm::sqrt(-2.0 * libm::log(u1)) * libm::cos(core::f64::consts::TAU * u2)
 }
 

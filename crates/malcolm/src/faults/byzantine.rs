@@ -116,7 +116,7 @@ impl ByzantineProfile {
         if self.probability >= 1.0 {
             return true;
         }
-        rng.r#gen::<f64>() < self.probability
+        rng.random::<f64>() < self.probability
     }
 }
 
@@ -185,7 +185,7 @@ impl LyingNode {
                 // Select unique bit positions with a partial Fisher-Yates shuffle.
                 let mut positions: Vec<usize> = (0..total_bits).collect();
                 for i in 0..flips {
-                    let j = i + (rng.r#gen::<usize>() % (total_bits - i));
+                    let j = rng.random_range(i..total_bits);
                     positions.swap(i, j);
                     let Some(&bit_index) = positions.get(i) else {
                         continue;

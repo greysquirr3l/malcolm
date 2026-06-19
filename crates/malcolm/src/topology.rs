@@ -357,7 +357,7 @@ impl CascadeFault {
             if let Some(edges) = self.topology.neighbors(&current) {
                 for edge in edges {
                     let probability = (edge.weight * intensity).clamp(0.0, 1.0);
-                    let injected = rng.r#gen::<f64>() < probability;
+                    let injected = rng.random::<f64>() < probability;
 
                     hops.push(PropagationHop {
                         from: current.clone(),

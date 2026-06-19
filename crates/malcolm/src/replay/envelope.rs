@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +97,11 @@ pub enum EnvelopeError {
     /// Underlying keystore backend returned an error.
     #[error("keystore error: {0}")]
     Keystore(String),
+
+    /// The system entropy source (OS RNG) was unavailable when generating
+    /// nonce or salt material for the sealed envelope.
+    #[error("os entropy source unavailable")]
+    EntropyUnavailable,
 
     /// Decrypted payload could not be parsed as a [`ScenarioRecord`].
     #[error("failed to decode scenario record: {0}")]
@@ -300,10 +305,14 @@ impl ScenarioEnvelope {
         };
 
         let mut nonce = [0_u8; NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce);
+        OsRng
+            .try_fill_bytes(&mut nonce)
+            .map_err(|_error| EnvelopeError::EntropyUnavailable)?;
 
         let mut salt = [0_u8; SALT_LEN];
-        OsRng.fill_bytes(&mut salt);
+        OsRng
+            .try_fill_bytes(&mut salt)
+            .map_err(|_error| EnvelopeError::EntropyUnavailable)?;
 
         let mut passphrase = passphrase_provider.get_passphrase()?;
         let mut key_bytes = derive_key(&passphrase, &salt)?;
