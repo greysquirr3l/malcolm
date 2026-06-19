@@ -104,17 +104,17 @@ jobs:
         # `Unicode-3.0` identifier (used by the webpki-root-certs Mozilla
         # CA bundle), and 0.17+ parses CVSS 4.0 scoring which the
         # current RustSec advisory database uses.
-        uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
-        with:
-          tool: cargo-deny@0.19.9
+        # Use `cargo install` rather than `taiki-e/install-action`:
+        # the latter embeds a cargo-deny manifest parser that lags
+        # behind upstream and chokes on the 0.19.x package.edition
+        # field.
+        run: cargo install cargo-deny --locked --version 0.19.9
 
       - name: Run cargo-deny
         run: cargo deny check
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
-        with:
-          tool: cargo-audit
+        run: cargo install cargo-audit --locked
 
       - name: Run cargo-audit
         run: cargo audit
