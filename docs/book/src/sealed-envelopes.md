@@ -28,3 +28,19 @@ assert_eq!(opened.seed, record.seed);
 - Use non-interactive open only in explicitly approved automation paths.
 - Treat passphrase providers as sensitive configuration.
 - Keep envelope metadata and policy with release artifacts.
+
+## Error model
+
+The seal and open paths return `Result<_, EnvelopeError>`. In
+addition to the obvious parse and authentication variants, the
+`EntropyUnavailable` variant is returned when the OS entropy source
+(e.g. `/dev/urandom`) refuses a fill. Callers should treat this as
+a transient operational failure and retry rather than a permanent
+configuration error.
+
+## Format choice
+
+Persist envelopes as `to_bytes()` for transport and `to_yaml()` for
+operator review. The byte form is compact and round-trips through
+the byte-oriented `from_bytes()` constructor; the YAML form is
+self-describing and easy to diff in code review or version control.

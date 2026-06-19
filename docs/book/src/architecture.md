@@ -23,8 +23,11 @@ Responsibilities:
 
 - Fault traits and concrete fault implementations.
 - Scenario composition and execution.
-- Topology cascade propagation.
-- Recording, replay, and envelope handling.
+- Topology cascade propagation plus DOT and Mermaid graph exporters.
+- Named scenario presets (`flaky_net`, `slow_disk`, `byzantine_cluster`,
+  `clock_drift`, `memory_pressure`).
+- Recording, replay, and envelope handling (JSON, bytes, YAML).
+- `malcolm-run` CLI binary for operator-driven scenario execution.
 
 Constraints:
 
