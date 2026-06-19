@@ -17,7 +17,7 @@ mod runtime {
         }
     }
 
-    pub async fn run() {
+    pub(crate) async fn run() {
         println!("async_service: creating mock client with network faults");
 
         let profile = BifurcationProfile::network_partition();
