@@ -4,6 +4,65 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.6.0] - 2026-06-19
+
+This release rolls up the hardening, scenario-runner, observability, and
+supply-chain work that landed on `main` between `0.5.1` and the
+current `head`. No breaking changes to the public `malcolm` API.
+
+### Added
+
+- **Scenario presets** (`malcolm::presets`): five named, ready-to-run
+  fault bundles — `flaky_net`, `slow_disk`, `byzantine_cluster`,
+  `clock_drift`, `memory_pressure` — plus a `preset(name)` lookup and a
+  `PRESET_NAMES` constant.
+- **Scenario runner CLI** (`malcolm-run`): new binary that takes a
+  named preset, applies user-supplied overrides (`--seed`, `--node`,
+  `--profile`, `--dry-run`), and emits a JSON report (stdout or
+  `--output`) plus an optional `ScenarioRecord` (YAML or JSON from
+  extension, via `--record`).
+- **Topology visualisation**: `Topology::to_dot()` for Graphviz DOT
+  and `Topology::to_mermaid()` for Mermaid flowcharts.
+- **YAML round-trip for `ScenarioRecord`**: `to_yaml()` / `from_yaml()`
+  alongside the existing JSON and bytes serialisers.
+- **New error variant**: `EnvelopeError::EntropyUnavailable`,
+  surfaced when the OS entropy source refuses a fill (e.g.
+  `/dev/urandom` unavailable).
+- **Workspace `rust-version = "1.85"`** declared on every crate.
+- **Workspace `[lints]` table** with `unsafe_code = "forbid"`,
+  `missing_docs = "warn"`, and `unreachable_pub = "warn"`. All missing
+  rustdoc filled in to satisfy the lint.
+- **`CONTRIBUTING.md`**, **`SECURITY.md`**, and **`CODE_OF_CONDUCT.md`**
+  at repo root.
+- **Property-based tests** (28 cases): distributions, noise, Lyapunov,
+  bifurcation, replay integrity, envelope tamper detection.
+- **Criterion benchmarks** (13): hot math primitives and the
+  envelope seal/open path under `crates/malcolm/benches/`.
+- **`cargo-fuzz` targets** (`classify`, `envelope_from_bytes`,
+  `response_parser`) under a new `fuzz/` crate, run weekly by CI.
+- **End-to-end integration test** stitching the public API together:
+  `chaos -> replay -> envelope -> open`, with wrong-passphrase
+  rejection and all-format round-trip.
+
+### Changed
+
+- **CI hardening**: `cargo doc --workspace --no-deps` with
+  `RUSTDOCFLAGS="-D warnings"`, `cargo build --workspace --examples`,
+  `cargo deny check`, `cargo audit`, and a markdownlint step now run
+  on every push. All `actions/checkout` references pinned to
+  commit SHAs.
+- **Dependabot** enabled (`.github/dependabot.yml`) with weekly
+  updates for both `github-actions` and `cargo` ecosystems.
+- **Branch protection** on `main`: 1 approving review, admin
+  override, linear history, signed commits, conversation
+  resolution, status checks on the three required CI jobs.
+- **Bumped `rand 0.8.6 → 0.9.4`**. Internal call sites updated to
+  `Rng::random` / `Rng::random_range` and to `TryRngCore::try_fill_bytes`
+  (with the new `EntropyUnavailable` error variant). The public
+  `ScenarioEnvelope` API is unchanged.
+- **Bumped `criterion 0.5.1 → 0.8.2`** and **`rig-core 0.37.0 → 0.39.0`**.
+- Updated quick-start dependency examples to `malcolm = "0.6.0"`.
+
 ## [0.5.1] - 2026-05-30
 
 ### Fixed
