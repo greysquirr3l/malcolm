@@ -33,21 +33,10 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: clippy, rustfmt
-
-      # rustup with `--profile minimal` (the action's default) sometimes
-      # reports components as installed but `cargo fmt` then cannot
-      # find `cargo-fmt`. The explicit `rustup component add` below
-      # is idempotent and resolves the recursion-error path that
-      # otherwise surfaces in `cargo fmt --all -- --check`.
-      - name: Ensure rustfmt is present
-        run: rustup component add rustfmt --toolchain stable
+          components: clippy
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
 
       - name: Build workspace
         run: cargo build --workspace --all-targets
@@ -68,6 +57,25 @@ jobs:
 
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  format-check:
+    name: Format check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: rustfmt
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
   docs-book:
     name: Build mdBook docs
@@ -144,4 +152,4 @@ jobs:
       # up .markdownlint.json from the project root depending on the
       # installed markdownlint-cli2 version.
       - name: Run markdownlint
-        run: markdownlint-cli2 --config .markdownlint.json "**/*.md" "#book/**/*.html" "#node_modules/**/*.md"
+        run: markdownlint-cli2 "**/*.md" "#book/**/*.html" "#node_modules/**/*.md"
