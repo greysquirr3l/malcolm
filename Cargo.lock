@@ -1184,7 +1184,7 @@ dependencies = [
  "criterion",
  "malcolm-core",
  "proptest",
- "rand 0.8.6",
+ "rand 0.9.4",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1201,7 +1201,7 @@ version = "0.5.1"
 dependencies = [
  "libm",
  "proptest",
- "rand 0.8.6",
+ "rand 0.9.4",
 ]
 
 [[package]]
