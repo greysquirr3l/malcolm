@@ -66,10 +66,30 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
+      # Read the pinned version from rust-toolchain.toml so the
+      # component-add below targets the exact toolchain the project
+      # uses (1.96.0 in rust-toolchain.toml overrides `stable`).
+      - name: Resolve toolchain version
+        id: toolchain
+        run: |
+          set -euo pipefail
+          version=$(awk -F'"' '/^\[toolchain\]/{flag=1; next} flag && /channel =/{gsub(/ /,""); print $2; exit}' rust-toolchain.toml)
+          if [ -z "$version" ]; then version="stable"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "resolved toolchain: $version"
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: rustfmt
+          toolchain: ${{ steps.toolchain.outputs.version }}
+
+      # The dtolnay action with --profile minimal (default) reports
+      # components as installed but `cargo fmt` then errors with
+      # "cargo-fmt is not installed for the toolchain …" (rustup
+      # recursion bug). Adding the component explicitly here is
+      # idempotent and resolves the issue.
+      - name: Ensure rustfmt is present
+        run: rustup component add rustfmt --toolchain ${{ steps.toolchain.outputs.version }}
 
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
