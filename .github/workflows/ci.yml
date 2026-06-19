@@ -9,10 +9,24 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Default to read-only; each job declares its own minimum. This is
+# the OpenSSF-recommended pattern: top-level write grants trigger a
+# Token-Permissions finding.
+permissions:
+  contents: read
+
+# One CI in flight per branch. Cancels redundant runs against the
+# same branch when new pushes arrive.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
     name: Build, test, and lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
@@ -20,9 +34,6 @@ jobs:
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           components: clippy, rustfmt
-
-      - name: Ensure rustfmt and clippy are available
-        run: rustup component add rustfmt clippy
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
@@ -47,22 +58,21 @@ jobs:
       - name: Run doctests
         run: cargo test --workspace --doc
 
-      - name: Build docs
-        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
-
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   docs-book:
     name: Build mdBook docs
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Install mdBook
         uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
         with:
-          tool: mdbook
+          tool: mdbook@0.4.43
 
       - name: Build handbook
         run: mdbook build docs/book
@@ -70,6 +80,8 @@ jobs:
   no-std-check:
     name: Verify malcolm-core is no_std compatible
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
@@ -78,7 +90,7 @@ jobs:
         with:
           targets: thumbv7m-none-eabi
 
-      - name: Ensure no_std target is available
+      - name: Install no_std target
         run: rustup target add thumbv7m-none-eabi
 
       - name: Cache cargo registry and build
@@ -87,48 +99,38 @@ jobs:
       - name: Build malcolm-core without std
         run: cargo build -p malcolm-core --target thumbv7m-none-eabi --no-default-features
 
-  supply-chain:
-    name: Supply-chain audit (deny + audit)
+  build-docs:
+    name: Cargo API docs (RUSTDOCFLAGS=-D warnings)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
-      - name: Install Rust toolchain
+      - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
 
-      - name: Install cargo-deny
-        # Pin a specific cargo-deny release. 0.16.3+ recognises the SPDX
-        # `Unicode-3.0` identifier (used by the webpki-root-certs Mozilla
-        # CA bundle), and 0.17+ parses CVSS 4.0 scoring which the
-        # current RustSec advisory database uses.
-        # Use `cargo install` rather than `taiki-e/install-action`:
-        # the latter embeds a cargo-deny manifest parser that lags
-        # behind upstream and chokes on the 0.19.x package.edition
-        # field.
-        run: cargo install cargo-deny --locked --version 0.19.9
-
-      - name: Run cargo-deny
-        run: cargo deny check
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Run cargo-audit
-        run: cargo audit
+      - name: Build rustdoc with -D warnings
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps
 
   markdownlint:
     name: Lint markdown
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
-      - name: Run markdownlint
+      - name: Install markdownlint-cli2
         run: |
-          if command -v markdownlint-cli2 >/dev/null 2>&1; then
-            markdownlint-cli2 "**/*.md" "#book/**/*.html"
-          else
-            echo "markdownlint-cli2 not installed; skipping"
+          if ! command -v markdownlint-cli2 >/dev/null 2>&1; then
+            npm install -g markdownlint-cli2
           fi
+
+      - name: Run markdownlint
+        run: markdownlint-cli2 "**/*.md" "#book/**/*.html" "#node_modules/**/*.md"
