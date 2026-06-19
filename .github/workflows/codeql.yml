@@ -12,9 +12,10 @@ on:
     # Weekly off-hours scan to catch findings on slow-moving branches.
     - cron: "23 4 * * 1"
 
-permissions:
-  contents: read
-  security-events: write
+# Default to no permissions; each job declares its own minimum.
+# This avoids the OpenSSF Token-Permissions finding from a top-level
+# write grant.
+permissions: {}
 
 jobs:
   analyze:
@@ -24,6 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         language: ["rust"]
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
