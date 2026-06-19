@@ -1,6 +1,6 @@
-//! Declarative helpers for building [`ChaosScenario`] values inline.
+//! Declarative helpers for building [`crate::scenario::ChaosScenario`] values inline.
 //!
-//! The [`malcolm!`] macro keeps test code short when the full builder chain is
+//! The `malcolm!` macro keeps test code short when the full builder chain is
 //! distracting. It expands to the same scenario builder API used elsewhere in
 //! the crate.
 //!
@@ -28,6 +28,15 @@
 //! ```
 
 #[macro_export]
+/// Build a `ChaosScenario` inline from a compact, declarative literal.
+///
+/// The `malcolm!` macro expands to the same builder chain used by the
+/// `ChaosScenario::builder()` API, so its behaviour is identical and stays in
+/// sync with the rest of the crate. Use it in tests or in short operator
+/// scripts where the full builder chain is distracting.
+///
+/// Two forms are supported: one without a topology and one with an attached
+/// `Topology`. See the module-level documentation for an example.
 macro_rules! malcolm {
     (
         name: $name:expr,

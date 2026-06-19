@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Pre-push hook for malcolm
+# Runs the full CI-equivalent gate before pushing to remote.
+
+set -e
+
+echo "Running pre-push checks..."
+
+# Run the full workspace test suite (excluding docs which run below).
+echo "→ Running tests..."
+cargo test --workspace --all-targets
+
+# Run clippy with warnings as errors across the whole workspace.
+echo "→ Running clippy..."
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Ensure a release build still works.
+echo "→ Building release..."
+cargo build --workspace --release
+
+# Verify documentation builds clean (matches CI).
+echo "→ Building documentation..."
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+echo "✓ Pre-push checks passed"

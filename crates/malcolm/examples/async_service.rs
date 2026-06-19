@@ -1,3 +1,5 @@
+//! Async HTTP client wrapped with network fault injection narration.
+
 #[cfg(feature = "tokio")]
 mod runtime {
     use std::time::Duration;
@@ -15,7 +17,7 @@ mod runtime {
         }
     }
 
-    pub async fn run() {
+    pub(crate) async fn run() {
         println!("async_service: creating mock client with network faults");
 
         let profile = BifurcationProfile::network_partition();

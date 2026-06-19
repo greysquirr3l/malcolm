@@ -1,3 +1,8 @@
+//! Integration tests for the `malcolm-lens` public API surface.
+//!
+//! These tests exercise the wiring from `LensAnalyzer` through provider and
+//! parser boundaries end-to-end.
+
 use async_trait::async_trait;
 use malcolm::scenario::{ScenarioEvent, ScenarioRegime, ScenarioReport};
 use malcolm_lens::{

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit hook for malcolm
+# Runs cargo fmt, gitleaks, and cargo audit before allowing commits.
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Run cargo fmt and stage any changes
+echo "→ Running cargo fmt..."
+cargo fmt --all
+
+# Stage any formatting changes to tracked Rust files
+git diff --name-only --cached | grep '\.rs$' | while read -r file; do
+    if [ -f "$file" ]; then
+        git add "$file"
+    fi
+done
+
+# Run gitleaks to detect secrets in staged changes
+echo "→ Running gitleaks..."
+if ! command -v gitleaks &> /dev/null; then
+    echo "⚠️  gitleaks not installed, skipping secrets detection"
+    echo "   Install with: brew install gitleaks (macOS) or see https://github.com/gitleaks/gitleaks#installing"
+else
+    gitleaks protect --staged --verbose
+fi
+
+# Run cargo audit for known RustSec advisories
+echo "→ Running cargo audit..."
+if ! command -v cargo-audit &> /dev/null; then
+    echo "⚠️  cargo-audit not installed, skipping security audit"
+    echo "   Install with: cargo install cargo-audit --locked"
+else
+    cargo audit
+fi
+
+echo "✓ Pre-commit checks passed"

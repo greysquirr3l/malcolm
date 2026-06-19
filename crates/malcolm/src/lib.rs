@@ -35,6 +35,7 @@ pub use malcolm_core::types::{DryRunReport, FaultEvent, FaultResult, SkipReason}
 pub mod fault;
 pub mod faults;
 pub mod macro_dsl;
+pub mod presets;
 pub mod replay;
 pub mod scenario;
 pub mod topology;

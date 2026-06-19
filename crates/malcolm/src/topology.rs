@@ -133,6 +133,113 @@ impl Topology {
         });
         all
     }
+
+    /// Render this topology as a [Graphviz DOT](https://graphviz.org/doc/info/lang.html)
+    /// directed graph. Edge labels carry the propagation weight so cascade
+    /// configuration can be inspected visually with `dot -Tsvg`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::topology::Topology;
+    ///
+    /// let topology = Topology::builder()
+    ///     .name("cluster")
+    ///     .add_edge("a", "b", 1.0)
+    ///     .add_edge("b", "c", 0.5)
+    ///     .build();
+    /// let dot = topology.to_dot();
+    /// assert!(dot.contains("digraph"));
+    /// assert!(dot.contains("\"a\" -> \"b\""));
+    /// assert!(dot.contains("\"b\" -> \"c\""));
+    /// ```
+    #[must_use]
+    pub fn to_dot(&self) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        writeln!(
+            out,
+            "digraph \"{label}\" {{",
+            label = escape_dot(&self.name)
+        )
+        .unwrap();
+        writeln!(out, "  rankdir=LR;").unwrap();
+        writeln!(
+            out,
+            "  node [shape=circle, style=filled, fillcolor=\"#dde6f3\"];"
+        )
+        .unwrap();
+        for node in self.node_ids() {
+            writeln!(out, "  \"{id}\";", id = escape_dot(&node)).unwrap();
+        }
+        for (from, to, weight) in self.edges() {
+            let pct = (weight * 100.0).clamp(0.0, 100.0);
+            writeln!(
+                out,
+                "  \"{from}\" -> \"{to}\" [label=\"{pct:.0}%\", weight=\"{weight:.3}\"];",
+                from = escape_dot(&from),
+                to = escape_dot(&to),
+                pct = pct,
+                weight = weight,
+            )
+            .unwrap();
+        }
+        writeln!(out, "}}").unwrap();
+        out
+    }
+
+    /// Render this topology as a [Mermaid](https://mermaid.js.org/) flowchart
+    /// `graph TD` block. Suitable for embedding in markdown documentation and
+    /// GitHub-flavored markdown viewers.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use malcolm::topology::Topology;
+    ///
+    /// let topology = Topology::builder()
+    ///     .name("cluster")
+    ///     .add_edge("a", "b", 1.0)
+    ///     .build();
+    /// let mermaid = topology.to_mermaid();
+    /// assert!(mermaid.starts_with("graph TD"));
+    /// assert!(mermaid.contains("a -->|100%| b"));
+    /// ```
+    #[must_use]
+    pub fn to_mermaid(&self) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from("graph TD\n");
+        for node in self.node_ids() {
+            writeln!(out, "  {id}[\"{id}\"]", id = escape_mermaid(&node)).unwrap();
+        }
+        for (from, to, weight) in self.edges() {
+            let pct = (weight * 100.0).clamp(0.0, 100.0);
+            writeln!(
+                out,
+                "  {from} -->|{pct:.0}%| {to}",
+                from = escape_mermaid(&from),
+                to = escape_mermaid(&to),
+            )
+            .unwrap();
+        }
+        out
+    }
+}
+
+fn escape_dot(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+fn escape_mermaid(s: &str) -> String {
+    // Mermaid node ids permit alphanumerics and underscores; replace anything
+    // else with an underscore to keep the chart well-formed.
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
 }
 
 /// Builder for [`Topology`].
@@ -513,5 +620,62 @@ mod tests {
             result,
             FaultResult::Skipped(SkipReason::BelowThreshold)
         ));
+    }
+
+    #[test]
+    fn to_dot_includes_header_nodes_and_weighted_edges() {
+        let topology = Topology::builder()
+            .name("cluster-a")
+            .add_edge("a", "b", 1.0)
+            .add_edge("b", "c", 0.25)
+            .build();
+
+        let dot = topology.to_dot();
+        assert!(dot.starts_with("digraph \"cluster-a\" {"));
+        assert!(dot.contains("\"a\";"));
+        assert!(dot.contains("\"b\";"));
+        assert!(dot.contains("\"c\";"));
+        assert!(dot.contains("\"a\" -> \"b\" [label=\"100%\", weight=\"1.000\"]"));
+        assert!(dot.contains("\"b\" -> \"c\" [label=\"25%\", weight=\"0.250\"]"));
+        assert!(dot.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn to_dot_escapes_quotes_in_topology_name() {
+        let topology = Topology::builder()
+            .name("a\"b")
+            .add_edge("a", "b", 0.5)
+            .build();
+        let dot = topology.to_dot();
+        assert!(dot.contains("digraph \"a\\\"b\""));
+    }
+
+    #[test]
+    fn to_mermaid_emits_graph_td_block() {
+        let topology = Topology::builder()
+            .name("cluster")
+            .add_edge("a", "b", 1.0)
+            .add_edge("b", "c", 0.5)
+            .build();
+
+        let mermaid = topology.to_mermaid();
+        assert!(mermaid.starts_with("graph TD\n"));
+        assert!(mermaid.contains("a[\"a\"]"));
+        assert!(mermaid.contains("b[\"b\"]"));
+        assert!(mermaid.contains("c[\"c\"]"));
+        assert!(mermaid.contains("a -->|100%| b"));
+        assert!(mermaid.contains("b -->|50%| c"));
+    }
+
+    #[test]
+    fn to_mermaid_sanitises_node_ids() {
+        let topology = Topology::builder()
+            .name("n")
+            .add_edge("a-b", "c.d", 0.5)
+            .build();
+        let mermaid = topology.to_mermaid();
+        // Hyphens and dots must be replaced with underscores.
+        assert!(mermaid.contains("a_b"));
+        assert!(mermaid.contains("c_d"));
     }
 }

@@ -2,12 +2,16 @@
 name = "malcolm-core"
 version = "0.5.1"
 edition = "2024"
+rust-version = "1.85"
 description = "Pure math domain primitives for malcolm chaos engineering"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/greysquirr3l/malcom"
 readme = "../../README.md"
 keywords = ["chaos", "fault-injection", "testing", "no-std", "simulation"]
 categories = ["no-std", "algorithms", "development-tools::testing"]
+
+[lints]
+workspace = true
 
 [dependencies]
 libm = "0.2"
@@ -17,3 +21,4 @@ rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 default = []
 
 [dev-dependencies]
+proptest = { workspace = true }
