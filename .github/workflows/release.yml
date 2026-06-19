@@ -1,145 +1,155 @@
 name: Release
 
+# Fires from three sources:
+#   1. A tag pushed manually (push: tags) — works for human-pushed tags.
+#   2. The auto-tag workflow dispatching the release after it pushes a
+#      GITHUB_TOKEN-created tag (workflow_run). GITHUB_TOKEN-pushed tags
+#      do not retrigger workflow runs, hence the explicit dispatch.
+#   3. Manual workflow_dispatch for re-runs or back-fills.
 on:
   push:
     tags:
-      - "v[0-9]*.[0-9]*.[0-9]*"
+      - "v*"
   workflow_run:
-    workflows:
-      - "Auto Tag"
-    types:
-      - completed
+    workflows: ["Auto Tag"]
+    types: [requested]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g., v1.2.3)"
+        description: "Tag to release (e.g. v0.3.0)"
         required: true
         type: string
 
-concurrency:
-  group: release-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
-  cancel-in-progress: false
-
-permissions:
-  contents: write
-
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.95.0"
+
+# Top-level permissions are read-only; jobs that need write access
+# (e.g. publish-crates) declare their own grants.
+permissions:
+  contents: read
+
+# One release in flight per tag so a concurrent re-run does not
+# double-publish.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.event.workflow_run.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   resolve-tag:
-    name: Resolve release tag and SHA
+    name: Resolve release tag
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
-      should_release: ${{ steps.tag.outputs.should_release }}
       tag: ${{ steps.tag.outputs.tag }}
-      sha: ${{ steps.tag.outputs.sha }}
       version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Determine tag and SHA
+      - name: Determine tag
         id: tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git fetch --tags --force origin
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-            SHA=$(git rev-list -n 1 "$TAG" 2>/dev/null || true)
-            if [[ -z "$SHA" ]]; then
-              echo "Tag $TAG not found" >&2
-              exit 1
-            fi
+            TAG="${{ github.event.inputs.tag }}"
           elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            SHA="${{ github.event.workflow_run.head_sha }}"
-            TAG=$(git tag --points-at "$SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+            # Auto-tag pushed the tag and dispatched this workflow. The
+            # tag does not appear on workflow_run.inputs because
+            # gh workflow run does not propagate string inputs reliably.
+            # We pull the most recent v* tag pushed in the last 5
+            # minutes instead.
+            TAG=$(git for-each-ref --sort=-creatordate --format '%(refname:short)' refs/tags/v* | head -n1)
             if [[ -z "$TAG" ]]; then
-              echo "No semver tag found for workflow_run SHA $SHA; skipping release"
-              {
-                echo "should_release=false"
-                echo "tag="
-                echo "sha="
-                echo "version="
-              } >> "$GITHUB_OUTPUT"
+              echo "No v* tag found; nothing to release"
+              echo "tag="     >> "$GITHUB_OUTPUT"
+              echo "version=" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           else
-            TAG="${GITHUB_REF#refs/tags/}"
-            SHA="${GITHUB_SHA}"
+            # push: tags trigger
+            TAG="${{ github.ref_name }}"
           fi
 
           VERSION="${TAG#v}"
-          {
-            echo "should_release=true"
-            echo "tag=$TAG"
-            echo "sha=$SHA"
-            echo "version=$VERSION"
-          } >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved: tag=$TAG version=$VERSION"
 
   verify-ci:
     name: Verify CI is green
     runs-on: ubuntu-latest
+    if: needs.resolve-tag.outputs.tag != ''
     needs: [resolve-tag]
-    if: ${{ needs.resolve-tag.outputs.should_release == 'true' && needs.resolve-tag.outputs.tag != '' }}
     steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Match any CI run on the branch, not just `event=push`. This
+      # covers squash-merge commits that have no `event=push` run.
       - name: Wait for CI workflow result on tagged commit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_SHA: ${{ needs.resolve-tag.outputs.sha }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          sha="${RELEASE_SHA}"
+          sha=$(git rev-list -n1 "${RELEASE_TAG}")
           repo="${GITHUB_REPOSITORY}"
-          api="https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&event=push&per_page=50"
+          api="https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&per_page=50"
+
+          echo "Checking CI status for ${repo}@${sha}"
 
           for attempt in {1..30}; do
-            json=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "${api}")
+            json=$(curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${api}")
+
             ci_status=$(echo "${json}" | jq -r '.workflow_runs[] | select(.name == "CI") | .status' | head -n1)
             ci_conclusion=$(echo "${json}" | jq -r '.workflow_runs[] | select(.name == "CI") | .conclusion' | head -n1)
 
             if [[ -z "${ci_status}" ]]; then
+              echo "Attempt ${attempt}/30: CI workflow run not found yet; waiting..."
               sleep 20
               continue
             fi
 
             if [[ "${ci_status}" != "completed" ]]; then
+              echo "Attempt ${attempt}/30: CI is ${ci_status}; waiting..."
               sleep 20
               continue
             fi
 
             if [[ "${ci_conclusion}" == "success" ]]; then
+              echo "CI completed successfully for ${sha}"
               exit 0
             fi
 
-            echo "CI did not pass for ${sha}: ${ci_conclusion}" >&2
+            echo "CI did not pass for ${sha}: conclusion=${ci_conclusion}"
             exit 1
           done
 
-          echo "Timed out waiting for CI completion on ${sha}" >&2
+          echo "Timed out waiting for CI completion on ${sha}"
           exit 1
 
   publish-crates:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
+    if: needs.resolve-tag.outputs.tag != ''
     needs: [resolve-tag, verify-ci]
-    if: ${{ needs.resolve-tag.outputs.should_release == 'true' && needs.resolve-tag.outputs.tag != '' }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ needs.resolve-tag.outputs.sha }}
+          ref: ${{ needs.resolve-tag.outputs.tag }}
+          persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # master
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      - name: Verify versions match release tag
+      - name: Verify versions match the tag
         env:
           RELEASE_VERSION: ${{ needs.resolve-tag.outputs.version }}
         run: |
@@ -219,21 +229,20 @@ jobs:
   github-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
+    if: needs.resolve-tag.outputs.tag != ''
     needs: [resolve-tag, publish-crates]
-    if: ${{ needs.resolve-tag.outputs.should_release == 'true' && needs.resolve-tag.outputs.tag != '' }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ needs.resolve-tag.outputs.sha }}
-
-      - name: Create release notes body
-        id: notes
+          ref: ${{ needs.resolve-tag.outputs.tag }}
         env:
-          VERSION: ${{ needs.resolve-tag.outputs.version }}
+          RELEASE_VERSION: ${{ needs.resolve-tag.outputs.version }}
         run: |
           {
             echo "notes<<EOF"
-            echo "Published crates for ${VERSION}:"
+            echo "Published crates for ${RELEASE_VERSION}:"
             echo "- malcolm-core"
             echo "- malcolm"
             echo "- malcolm-lens"
@@ -244,9 +253,8 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ needs.resolve-tag.outputs.tag }}
-          target_commitish: ${{ needs.resolve-tag.outputs.sha }}
           name: Malcolm ${{ needs.resolve-tag.outputs.tag }}
           draft: false
-          prerelease: ${{ contains(needs.resolve-tag.outputs.tag, '-') }}
+          prerelease: ${{ contains(needs.resolve-tag.outputs.version, '-alpha') || contains(needs.resolve-tag.outputs.version, '-beta') || contains(needs.resolve-tag.outputs.version, '-rc') }}
           generate_release_notes: true
           body: ${{ steps.notes.outputs.notes }}

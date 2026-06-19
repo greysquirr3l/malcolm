@@ -12,8 +12,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    # Match every workflow that pins actions by SHA so Dependabot
-    # updates the SHA + comment together.
+    # Cap concurrent PRs so the auto-merge queue doesn't explode.
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
     labels:
@@ -25,13 +25,17 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+      include: "scope"
     labels:
       - "dependencies"
       - "cargo"
-    # Group minor and patch updates into single PRs to keep review
-    # load low; majors are kept separate.
+    # Major bumps are noisy and often need code changes (see the
+    # rand 0.8 -> 0.9 jump that needed source-level fixes). Open
+    # them anyway so the maintainer sees the diff, but let a human
+    # review the PR before merge.
     groups:
       minor-and-patch:
         applies-to: "version-updates"
@@ -40,5 +44,5 @@ updates:
           - "patch"
     ignore:
       # Don't bump the rust-version floor automatically — that is a
-      # human-curated decision.
+      # human-curated decision tied to the local toolchain contract.
       - dependency-name: "rust-version"

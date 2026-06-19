@@ -1,0 +1,25 @@
+# Reference projects
+
+reference_projects/
+
+# Dependency / vendor content
+
+node_modules/
+node_modules/**
+**/node_modules/**
+crates/stygian-plugin/extension/node_modules/**
+
+# License file
+
+LICENSE
+
+# Generated mdBook output
+
+book/
+docs/book/book/
+
+# Cargo and Rust build output
+
+target/
+Cargo.lock
+
