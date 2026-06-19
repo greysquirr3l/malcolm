@@ -30,10 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
+      - name: Resolve toolchain version
+        id: toolchain
+        run: |
+          set -euo pipefail
+          version=$(awk -F'"' '/^\[toolchain\]/{flag=1; next} flag && /channel =/{gsub(/ /,""); print $2; exit}' rust-toolchain.toml)
+          if [ -z "$version" ]; then version="stable"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "resolved toolchain: $version"
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: clippy
+          toolchain: ${{ steps.toolchain.outputs.version }}
+
+      - name: Ensure clippy is present
+        run: rustup component add clippy --toolchain ${{ steps.toolchain.outputs.version }}
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
