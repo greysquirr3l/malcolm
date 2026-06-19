@@ -99,7 +99,7 @@ impl Iterator for PinkNoise {
         let idx = (self.counter.trailing_zeros() as usize) % OCTAVES;
 
         // New white-noise value in (-1, 1).
-        let new_val: f64 = self.rng.r#gen::<f64>() * 2.0 - 1.0;
+        let new_val: f64 = self.rng.random::<f64>() * 2.0 - 1.0;
 
         // Update register and maintain running sum.
         if let Some(slot) = self.rows.get_mut(idx) {
@@ -188,7 +188,7 @@ impl Iterator for BrownNoise {
     fn next(&mut self) -> Option<f64> {
         // Triangular-distributed step: sum of two uniforms minus one, range [-1, 1].
         // Scaled to 5 % of the total range for strong autocorrelation.
-        let step_raw = self.rng.r#gen::<f64>() + self.rng.r#gen::<f64>() - 1.0;
+        let step_raw = self.rng.random::<f64>() + self.rng.random::<f64>() - 1.0;
         let step = step_raw * (self.max - self.min) * 0.05;
         self.value += step;
         // Clamp to [min, max] to prevent unbounded drift.
