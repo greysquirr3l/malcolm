@@ -56,3 +56,27 @@ let scenario = malcolm! {
 ## Cascades and topology
 
 When one local fault should propagate through graph edges, model the graph with `Topology` and execute through `CascadeFault`. This makes propagation order and affected nodes explicit in replay and tracing.
+
+For visualisation, `Topology::to_dot()` produces a Graphviz DOT graph
+and `Topology::to_mermaid()` produces a Mermaid `graph TD` block.
+Edge labels carry the propagation weight so reviewers can spot
+unrealistic configurations at a glance.
+
+## Presets
+
+`malcolm::presets` ships five named, ready-to-run scenarios for
+common failure modes. Each preset returns a `ChaosScenarioBuilder`
+that you can override before `build()`:
+
+| Preset | Profile | Use case |
+|---|---|---|
+| `flaky_net` | `network_partition` | Packet loss plus partition |
+| `slow_disk` | `latency_cascade` | Heavy-tailed latency plus memory pressure |
+| `byzantine_cluster` | `byzantine_node` | Lying nodes plus slow-correct responses |
+| `clock_drift` | `clock_skew` | Forward clock jumps for TTL tests |
+| `memory_pressure` | `memory_pressure` | Sustained memory plus CPU pressure |
+
+Look up a preset by name with `presets::preset(name)`. The same
+presets are also exposed via the `malcolm-run` CLI's `--preset`
+argument, so operator-driven and code-driven execution paths share
+the same configuration.

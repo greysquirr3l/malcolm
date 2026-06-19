@@ -47,3 +47,7 @@ assert!(replay.verify());
 - Use stable seeds in regression tests.
 - Keep fault context construction explicit.
 - Persist records for incidents where replay fidelity matters.
+- Persist records in YAML for operator-edited review
+  (`ScenarioRecord::to_yaml()` / `from_yaml()`) or JSON / bytes for
+  machine-to-machine transport. The three formats are lossless and
+  interchangeable.

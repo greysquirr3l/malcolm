@@ -17,8 +17,28 @@ cargo clippy --workspace -- -D warnings
 
 ```toml
 [dev-dependencies]
-malcolm = "0.5.1"
+malcolm = "0.6.0"
 ```
+
+## Run a named preset from the CLI
+
+The `malcolm-run` binary executes one of the built-in presets and emits a
+JSON report (plus an optional `ScenarioRecord` for replay):
+
+```bash
+# Show every available preset.
+cargo run -p malcolm --bin malcolm-run -- --list-presets
+
+# Run a preset with overrides, write the JSON report to stdout.
+cargo run -p malcolm --bin malcolm-run -- --preset flaky_net --seed 7
+
+# Record a run for later replay (.yaml or .json from extension).
+cargo run -p malcolm --bin malcolm-run -- --preset slow_disk --record run.yaml
+```
+
+Available presets: `flaky_net`, `slow_disk`, `byzantine_cluster`,
+`clock_drift`, `memory_pressure`. See `malcolm::presets` for the Rust
+API.
 
 ## Build your first scenario
 
