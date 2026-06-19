@@ -15,7 +15,7 @@ workspace = true
 
 [dependencies]
 libm = "0.2"
-rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+rand = { version = "0.9", default-features = false, features = ["small_rng"] }
 
 [features]
 default = []
