@@ -35,6 +35,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # rustup with `--profile minimal` (the action's default) sometimes
+      # reports components as installed but `cargo fmt` then cannot
+      # find `cargo-fmt`. The explicit `rustup component add` below
+      # is idempotent and resolves the recursion-error path that
+      # otherwise surfaces in `cargo fmt --all -- --check`.
+      - name: Ensure rustfmt is present
+        run: rustup component add rustfmt --toolchain stable
+
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@5cb072d7354962be830356aa6b146f7612846014 # v2.7.5
 
@@ -132,5 +140,8 @@ jobs:
             npm install -g markdownlint-cli2
           fi
 
+      # Pass the config explicitly because CI shells may not pick
+      # up .markdownlint.json from the project root depending on the
+      # installed markdownlint-cli2 version.
       - name: Run markdownlint
-        run: markdownlint-cli2 "**/*.md" "#book/**/*.html" "#node_modules/**/*.md"
+        run: markdownlint-cli2 --config .markdownlint.json "**/*.md" "#book/**/*.html" "#node_modules/**/*.md"
