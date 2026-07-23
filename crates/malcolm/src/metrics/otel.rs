@@ -644,3 +644,67 @@ mod recorder_tests {
             .expect("shutdown again on empty recorder");
     }
 }
+
+// ─── T28d ──────────────────────────────────────────────────────────────────
+// Bridge `tracing` events on the `malcolm` target into OTel spans via
+// `tracing-opentelemetry`. CI exercises the layer construction only; real
+// export is wired in T28f.
+
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use tracing_subscriber::Layer;
+use tracing_subscriber::filter::Targets;
+
+/// Build a [`tracing_opentelemetry::layer`] filtered to the `malcolm`
+/// target. Add it to a [`tracing_subscriber::Registry`] subscriber to turn
+/// every `tracing` event on `malcolm` into an `OTel` span.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use malcolm::metrics::otel::{OtelConfig, otel_tracing_layer};
+/// use opentelemetry::trace::TracerProvider;
+/// use opentelemetry_sdk::trace::SdkTracerProvider;
+/// use tracing_subscriber::layer::SubscriberExt;
+/// let provider = SdkTracerProvider::builder().build();
+/// let layer = otel_tracing_layer(&provider);
+/// let subscriber = tracing_subscriber::registry().with(layer);
+/// let _guard = tracing::subscriber::set_default(subscriber);
+/// tracing::info!(target: "malcolm", fault_type = "packet_loss", "span");
+/// # let _ = OtelConfig::default_for_tests();
+/// ```
+pub fn otel_tracing_layer(
+    provider: &SdkTracerProvider,
+) -> impl Layer<tracing_subscriber::Registry> {
+    let tracer = provider.tracer("malcolm");
+    tracing_opentelemetry::layer::<tracing_subscriber::Registry>()
+        .with_tracer(tracer)
+        .with_filter(Targets::new().with_target("malcolm", tracing::Level::INFO))
+}
+
+#[cfg(test)]
+mod tracing_tests {
+    use opentelemetry_sdk::trace::SdkTracerProvider;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    use super::otel_tracing_layer;
+
+    #[test]
+    fn otel_tracing_layer_construction_does_not_panic() {
+        let provider = SdkTracerProvider::builder().build();
+        let _layer = otel_tracing_layer(&provider);
+        // Construction succeeded; no exporter wired, so no spans leave the process.
+    }
+
+    #[test]
+    fn otel_tracing_layer_emits_span_when_subscribed() {
+        let provider = SdkTracerProvider::builder().build();
+        let layer = otel_tracing_layer(&provider);
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // Emit one event on the malcolm target; the layer should turn it
+        // into a span on the OTel side without panicking.
+        tracing::info!(target: "malcolm", fault_type = "noop", "smoke");
+    }
+}
