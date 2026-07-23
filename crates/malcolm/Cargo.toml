@@ -35,6 +35,28 @@ version = "0.13"
 default-features = false
 optional = true
 
+[dependencies.opentelemetry]
+version = "0.32"
+default-features = false
+features = ["metrics", "trace"]
+optional = true
+
+[dependencies.opentelemetry_sdk]
+version = "0.32"
+default-features = false
+features = ["metrics", "trace", "rt-tokio"]
+optional = true
+
+[dependencies.opentelemetry-otlp]
+version = "0.32"
+default-features = false
+optional = true
+
+[dependencies.tracing-opentelemetry]
+version = "0.33"
+default-features = false
+optional = true
+
 [dev-dependencies]
 tracing-test = "0.2"
 proptest = { workspace = true }
@@ -44,6 +66,9 @@ criterion = { version = "0.8", features = ["html_reports"] }
 default = []
 tokio = ["dep:tokio"]
 prometheus = ["dep:prometheus"]
+otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry", "otel-grpc"]
+otel-grpc = ["dep:opentelemetry-otlp", "opentelemetry-otlp/grpc-tonic"]
+otel-http = ["dep:opentelemetry-otlp", "opentelemetry-otlp/http-proto"]
 
 [[bench]]
 name = "core_math"
