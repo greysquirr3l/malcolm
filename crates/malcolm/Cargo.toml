@@ -44,7 +44,7 @@ optional = true
 [dependencies.opentelemetry_sdk]
 version = "0.32"
 default-features = false
-features = ["metrics", "trace", "rt-tokio"]
+features = ["metrics", "trace", "rt-tokio", "testing"]
 optional = true
 
 [dependencies.opentelemetry-otlp]
