@@ -192,8 +192,8 @@ Concrete exporters plug into this seam behind feature flags:
 
 | Exporter | Feature | Status |
 |----------|---------|--------|
-| Prometheus | `prometheus` | planned (T27) |
-| OpenTelemetry / OTLP | `otel`, `otel-grpc`, `otel-http` | planned (T28) |
+| Prometheus | `prometheus` | shipped (T27) |
+| OpenTelemetry / OTLP | `otel`, `otel-grpc`, `otel-http` | shipped (T28) |
 | StatsD / Datadog | `statsd` | planned (T29) |
 
 ## Worked Examples
