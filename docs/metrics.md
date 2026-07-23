@@ -85,7 +85,7 @@ default everywhere; it accepts any sample without side effects.
 | Exporter | Task | Status | Feature |
 |----------|------|--------|---------|
 | Prometheus | T27 | shipped | `prometheus` |
-| OpenTelemetry / OTLP | T28 | planned | `otel`, `otel-grpc`, `otel-http` |
+| OpenTelemetry / OTLP | T28 | shipped | `otel`, `otel-grpc`, `otel-http` |
 | StatsD / Datadog | T29 | planned | `statsd` |
 
 ## Prometheus (T27)
@@ -150,3 +150,68 @@ regime)` instead.
 exponential bucket layout from 1ms to ~60s (25 buckets across six decades).
 Values are stored in milliseconds — operators reading a scrape can multiply
 by `1e-3` to convert to base-unit seconds.
+
+## OpenTelemetry / OTLP (T28)
+
+`malcolm::metrics::otel` ships two pieces:
+
+- **`OtelRecorder`** — translates the canonical taxonomy into OTel metric
+  instruments (`Counter<u64>`, `Gauge<f64>`, `Histogram<f64>`) and emits
+  through an `SdkMeterProvider`. Pair with a `PeriodicReader` over OTLP for
+  production (T28f).
+- **`otel_tracing_layer`** — bridges every `tracing` event on the
+  `malcolm` target into an OTel span via `tracing-opentelemetry`, so chaos
+  runs show up as trace spans alongside the metrics.
+
+### Wiring
+
+```toml
+[dependencies]
+malcolm = { version = "0.6", features = ["otel", "otel-grpc"] }
+# or feature = ["otel", "otel-http"] for HTTP/protobuf transport
+```
+
+```rust
+use malcolm::metrics::otel::{OtelConfig, otel_tracing_layer};
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use tracing_subscriber::layer::SubscriberExt;
+
+let tracer_provider = SdkTracerProvider::builder().build();
+let layer = otel_tracing_layer(&tracer_provider);
+tracing_subscriber::registry().with(layer).init();
+```
+
+Configure the OTLP endpoint via the standard env vars:
+
+| Variable | Maps to |
+|----------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `endpoint` (required) |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (default) or `http`/`http-protobuf` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | comma-separated `k=v` headers |
+| `OTEL_SERVICE_NAME` | resource service name (default `malcolm`) |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | export timeout in seconds (default `10`) |
+
+### Local collector smoke test
+
+```bash
+docker run --rm -p 4317:4317 -p 4318:4318 \
+  -v $PWD/examples/otel-collector.yaml:/etc/otelcol/config.yaml \
+  otel/opentelemetry-collector-contrib:0.114.0
+```
+
+Send one scenario run; metrics and spans show up in the configured backend.
+
+### Force flush before exit
+
+Short-lived CI runs can drop the last metric batch on process exit. Call
+`OtelRecorder::force_flush()` and `OtelRecorder::shutdown()` before exit:
+
+```rust
+recorder.force_flush()?;
+recorder.shutdown()?;
+```
+
+`shutdown()` is idempotent at the `OtelRecorder` layer; calling it twice
+returns `Ok(())`.
+
