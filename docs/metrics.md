@@ -84,6 +84,69 @@ default everywhere; it accepts any sample without side effects.
 
 | Exporter | Task | Status | Feature |
 |----------|------|--------|---------|
-| Prometheus | T27 | planned | `prometheus` |
+| Prometheus | T27 | shipped | `prometheus` |
 | OpenTelemetry / OTLP | T28 | planned | `otel`, `otel-grpc`, `otel-http` |
 | StatsD / Datadog | T29 | planned | `statsd` |
+
+## Prometheus (T27)
+
+`PrometheusRecorder` translates the canonical taxonomy into Prometheus time
+series and renders the standard text exposition format on demand. It's
+feature-gated behind `prometheus` so the default build pulls no extra deps.
+
+```rust
+use std::sync::Arc;
+use malcolm::metrics::prometheus::PrometheusRecorder;
+use malcolm::metrics::MetricsHub;
+use malcolm::scenario::ChaosScenario;
+
+let recorder = Arc::new(PrometheusRecorder::new());
+let hub = MetricsHub::new().with_recorder(recorder.clone());
+scenario.run_with_metrics(&mut ctx, &hub);
+
+// Scrape body for a Prometheus server:
+let body = recorder.gather_text()?;
+```
+
+Or one-liner via [`PrometheusRecorder::into_hub`]:
+
+```rust
+let hub = PrometheusRecorder::new().into_hub();
+scenario.run_with_metrics(&mut ctx, &hub);
+```
+
+### Exposing over HTTP
+
+`gather_text()` returns the standard text format. Embed it in any HTTP server:
+
+```rust
+// e.g. axum
+async fn metrics() -> impl IntoResponse {
+    recorder.gather_text().unwrap_or_default()
+}
+```
+
+Sample Prometheus `scrape_config`:
+
+```yaml
+scrape_configs:
+  - job_name: malcolm
+    static_configs:
+      - targets: ['localhost:9000']
+    metrics_path: /metrics
+    scrape_interval: 15s
+```
+
+### Cardinality
+
+`node_id` and `scenario` are user-controlled strings. For high-cardinality
+deployments, swap to `PrometheusRecorder::dropping_high_cardinality_labels()`
+to strip `node_id` from every series and aggregate per `(fault_type, scenario,
+regime)` instead.
+
+### Bucket choice
+
+`malcolm_fault_latency_ms` and `malcolm_scenario_duration_ms` use an
+exponential bucket layout from 1ms to ~60s (25 buckets across six decades).
+Values are stored in milliseconds — operators reading a scrape can multiply
+by `1e-3` to convert to base-unit seconds.
