@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use rand::TryRngCore;
-use rand::rngs::OsRng;
+use rand::TryRng;
+use rand::rngs::SysRng;
 use serde::{Deserialize, Serialize};
 
 use super::ScenarioRecord;
@@ -305,23 +305,23 @@ impl ScenarioEnvelope {
         };
 
         let mut nonce = [0_u8; NONCE_LEN];
-        OsRng
+        SysRng
             .try_fill_bytes(&mut nonce)
             .map_err(|_error| EnvelopeError::EntropyUnavailable)?;
 
         let mut salt = [0_u8; SALT_LEN];
-        OsRng
+        SysRng
             .try_fill_bytes(&mut salt)
             .map_err(|_error| EnvelopeError::EntropyUnavailable)?;
 
         let mut passphrase = passphrase_provider.get_passphrase()?;
         let mut key_bytes = derive_key(&passphrase, &salt)?;
 
-        let key = Key::from_slice(&key_bytes);
-        let cipher = ChaCha20Poly1305::new(key);
-        let nonce_ref = Nonce::from_slice(&nonce);
+        let key = Key::try_from(&key_bytes[..]).map_err(|_error| EnvelopeError::KeyDerivation)?;
+        let cipher = ChaCha20Poly1305::new(&key);
+        let nonce_ref = Nonce::try_from(&nonce[..]).map_err(|_error| EnvelopeError::Encrypt)?;
         let ciphertext = cipher
-            .encrypt(nonce_ref, plaintext.as_ref())
+            .encrypt(&nonce_ref, plaintext.as_ref())
             .map_err(|_error| EnvelopeError::Encrypt)?;
 
         key_bytes.fill(0);
@@ -484,9 +484,12 @@ impl ScenarioEnvelope {
         let mut passphrase = passphrase_provider.get_passphrase()?;
         let mut key_bytes = derive_key(&passphrase, &self.salt)?;
 
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+        let key = Key::try_from(&key_bytes[..]).map_err(|_error| EnvelopeError::KeyDerivation)?;
+        let cipher = ChaCha20Poly1305::new(&key);
+        let nonce_ref =
+            Nonce::try_from(&self.nonce[..]).map_err(|_error| EnvelopeError::Decrypt)?;
         let plaintext = cipher
-            .decrypt(Nonce::from_slice(&self.nonce), self.ciphertext.as_ref())
+            .decrypt(&nonce_ref, self.ciphertext.as_ref())
             .map_err(|_error| EnvelopeError::Decrypt)?;
 
         key_bytes.fill(0);

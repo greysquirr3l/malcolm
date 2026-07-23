@@ -18,19 +18,19 @@
 //! assert!(sample >= 1.0);
 //! ```
 
-use rand::Rng as _;
-use rand::RngCore;
+use rand::Rng;
+use rand::RngExt as _;
 
 // ── Trait ────────────────────────────────────────────────────────────────────
 
 /// A trait for drawing samples from a continuous probability distribution.
 ///
 /// All implementations in this module are `no_std`-safe and require only a
-/// mutable reference to any [`RngCore`] source.
+/// mutable reference to any [`Rng`] source.
 pub trait DistributionSampler {
     /// Draw a single sample from this distribution.
     #[must_use]
-    fn sample(&self, rng: &mut impl RngCore) -> f64;
+    fn sample(&self, rng: &mut impl Rng) -> f64;
 }
 
 // ── PowerLaw ─────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ impl Default for PowerLaw {
 
 impl DistributionSampler for PowerLaw {
     /// Draw one sample: `x = (1 - u)^(-1 / (alpha - 1))`.
-    fn sample(&self, rng: &mut impl RngCore) -> f64 {
+    fn sample(&self, rng: &mut impl Rng) -> f64 {
         let u: f64 = rng.random::<f64>();
         let exponent = -1.0 / (self.alpha - 1.0);
         libm::pow(1.0 - u, exponent)
@@ -107,7 +107,7 @@ pub struct Pareto {
 
 impl DistributionSampler for Pareto {
     /// Draw one sample: `x = x_min * (1 - u)^(-1 / alpha)`.
-    fn sample(&self, rng: &mut impl RngCore) -> f64 {
+    fn sample(&self, rng: &mut impl Rng) -> f64 {
         let u: f64 = rng.random::<f64>();
         self.x_min * libm::pow(1.0 - u, -1.0 / self.alpha)
     }
@@ -143,7 +143,7 @@ pub struct LogNormal {
 
 impl DistributionSampler for LogNormal {
     /// Draw one sample: `x = exp(mu + sigma * Z)`, `Z ~ N(0,1)` via Box-Muller.
-    fn sample(&self, rng: &mut impl RngCore) -> f64 {
+    fn sample(&self, rng: &mut impl Rng) -> f64 {
         let z = box_muller(rng);
         libm::exp(self.mu + self.sigma * z)
     }
@@ -155,7 +155,7 @@ impl DistributionSampler for LogNormal {
 ///
 /// `Z = sqrt(-2 ln U1) * cos(2π U2)` where `U1, U2 ~ U(0, 1)`.
 /// `U1` is clamped to `[f64::EPSILON, 1)` to avoid `log(0)`.
-fn box_muller(rng: &mut impl RngCore) -> f64 {
+fn box_muller(rng: &mut impl Rng) -> f64 {
     let u1: f64 = rng.random::<f64>().max(f64::EPSILON);
     let u2: f64 = rng.random::<f64>();
     libm::sqrt(-2.0 * libm::log(u1)) * libm::cos(core::f64::consts::TAU * u2)
