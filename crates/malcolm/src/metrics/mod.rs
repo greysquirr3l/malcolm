@@ -588,3 +588,6 @@ mod tests {
 
 #[cfg(feature = "prometheus")]
 pub mod prometheus;
+
+#[cfg(feature = "otel")]
+pub mod otel;
