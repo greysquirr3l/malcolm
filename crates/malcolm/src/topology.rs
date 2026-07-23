@@ -32,7 +32,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use rand::Rng as _;
+use rand::RngExt as _;
 use rand::SeedableRng as _;
 use rand::rngs::SmallRng;
 use serde::{Deserialize, Serialize};

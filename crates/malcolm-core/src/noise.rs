@@ -27,7 +27,7 @@
 
 extern crate alloc;
 
-use rand::Rng as _;
+use rand::RngExt as _;
 use rand::SeedableRng as _;
 use rand::rngs::SmallRng;
 
