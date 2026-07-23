@@ -30,6 +30,11 @@ version = "1"
 optional = true
 features = ["time", "rt"]
 
+[dependencies.prometheus]
+version = "0.13"
+default-features = false
+optional = true
+
 [dev-dependencies]
 tracing-test = "0.2"
 proptest = { workspace = true }
@@ -38,6 +43,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [features]
 default = []
 tokio = ["dep:tokio"]
+prometheus = ["dep:prometheus"]
 
 [[bench]]
 name = "core_math"
