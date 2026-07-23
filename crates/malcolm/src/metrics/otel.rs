@@ -324,3 +324,323 @@ mod tests {
         assert!(cfg.headers.is_empty());
     }
 }
+
+// ─── T28c ──────────────────────────────────────────────────────────────────
+// OtelRecorder: MetricsRecorder impl backed by an `SdkMeterProvider`.
+//
+// The recorder owns its provider, so `shutdown()` cleans everything up. CI
+// uses `TestMetricReader` (no network); T28f will plug an OTLP exporter
+// behind the `otel-grpc` / `otel-http` sub-features. Force-flush + shutdown
+// are explicit because short-lived CI runs can drop the last export on
+// exit otherwise — see `OtelRecorder::force_flush` / `OtelRecorder::shutdown`.
+
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+
+use opentelemetry::metrics::{Counter, Gauge, Histogram, MeterProvider};
+use opentelemetry::{KeyValue, Value};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
+
+use super::{
+    FAULT_INTENSITY, FAULT_LATENCY_MS, FAULTS_INJECTED_TOTAL, FAULTS_SKIPPED_TOTAL, MetricKind,
+    MetricSample, MetricsRecorder, SCENARIO_DURATION_MS,
+};
+
+const METER_SCOPE: &str = "malcolm";
+
+/// Errors produced by [`OtelRecorder`] during `force_flush` / `shutdown`.
+///
+/// Sample-handling errors are intentionally swallowed and logged at
+/// `tracing::warn!` so a misconfigured pipeline never crashes a chaos run.
+#[derive(Debug, thiserror::Error)]
+pub enum OtelRecorderError {
+    /// The recorder's provider was shut down before this operation.
+    #[error("OpenTelemetry recorder has been shut down")]
+    Shutdown,
+    /// An error returned by the underlying OTel SDK (typically a flush or
+    /// shutdown failure).
+    #[error("OpenTelemetry SDK error: {0}")]
+    Sdk(String),
+}
+
+/// OTel metrics recorder. Wire into [`MetricsHub`](super::MetricsHub) like any
+/// other [`MetricsRecorder`].
+pub struct OtelRecorder {
+    provider: SdkMeterProvider,
+    instruments: InstrumentSet,
+    warned: RwLock<HashSet<&'static str>>,
+    shutdown_called: AtomicBool,
+}
+
+#[derive(Clone)]
+struct InstrumentSet {
+    faults_injected: Counter<u64>,
+    faults_skipped: Counter<u64>,
+    fault_intensity: Gauge<f64>,
+    fault_latency_ms: Histogram<f64>,
+    scenario_duration_ms: Histogram<f64>,
+}
+
+impl OtelRecorder {
+    /// Build a recorder over an in-memory `TestMetricReader`. Production
+    /// wiring (a `PeriodicReader` over an OTLP exporter) lands in T28f
+    /// behind the `otel-grpc`/`otel-http` sub-features.
+    ///
+    /// The SDK's `MeterProviderBuilder::with_reader` takes the reader by
+    /// value, so this constructor transfers ownership. To keep the
+    /// `TestMetricReader` alive for post-run assertions in tests, pair it
+    /// with [`OtelRecorder::paired_test_reader`] which builds a recorder
+    /// *without* consuming the reader, leaving the Arc available to the
+    /// caller.
+    #[must_use]
+    pub fn with_test_reader(service_name: &str) -> Arc<Self> {
+        use opentelemetry_sdk::metrics::MeterProviderBuilder;
+        let reader = opentelemetry_sdk::testing::metrics::TestMetricReader::new();
+        let resource = Resource::builder()
+            .with_service_name(service_name.to_owned())
+            .build();
+        let provider = MeterProviderBuilder::default()
+            .with_resource(resource)
+            .with_reader(reader)
+            .build();
+
+        let meter = provider.meter(METER_SCOPE);
+        let instruments = InstrumentSet {
+            faults_injected: meter
+                .u64_counter(FAULTS_INJECTED_TOTAL)
+                .with_description("Total faults successfully injected.")
+                .with_unit("1")
+                .build(),
+            faults_skipped: meter
+                .u64_counter(FAULTS_SKIPPED_TOTAL)
+                .with_description("Total faults skipped.")
+                .with_unit("1")
+                .build(),
+            fault_intensity: meter
+                .f64_gauge(FAULT_INTENSITY)
+                .with_description("Latest observed intensity per (fault_type, node_id).")
+                .with_unit("1")
+                .build(),
+            fault_latency_ms: meter
+                .f64_histogram(FAULT_LATENCY_MS)
+                .with_description("Fault-reported latency (ms).")
+                .with_unit("ms")
+                .build(),
+            scenario_duration_ms: meter
+                .f64_histogram(SCENARIO_DURATION_MS)
+                .with_description("Scenario wall-clock duration (ms).")
+                .with_unit("ms")
+                .build(),
+        };
+
+        Arc::new(Self {
+            provider,
+            instruments,
+            warned: RwLock::new(HashSet::new()),
+            shutdown_called: AtomicBool::new(false),
+        })
+    }
+
+    /// Flush any pending metric data through the underlying reader. Safe to
+    /// call multiple times. Always call before process exit on a short-lived
+    /// run; otherwise the last batch may be lost.
+    pub fn force_flush(&self) -> Result<(), OtelRecorderError> {
+        self.provider
+            .force_flush()
+            .map_err(|e| OtelRecorderError::Sdk(format!("force_flush failed: {e:?}")))
+    }
+
+    /// Shut the provider down. After this call the recorder stops producing
+    /// data and any further `record` calls log warnings and skip.
+    ///
+    /// Idempotent at the [`OtelRecorder`] layer: subsequent calls return
+    /// `Ok(())` without invoking the underlying SDK shutdown (which would
+    /// otherwise return an error on a second call).
+    pub fn shutdown(&self) -> Result<(), OtelRecorderError> {
+        if self.shutdown_called.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        self.provider
+            .shutdown()
+            .map_err(|e| OtelRecorderError::Sdk(format!("shutdown failed: {e:?}")))
+    }
+
+    fn warn_once(&self, name: &'static str) {
+        let mut warned = self.warned.write().expect("poisoned");
+        if warned.insert(name) {
+            tracing::warn!(
+                target: "malcolm",
+                metric = name,
+                "unknown metric name received by OtelRecorder; skipping",
+            );
+        }
+    }
+}
+
+impl MetricsRecorder for OtelRecorder {
+    fn record(&self, sample: &MetricSample) {
+        let attrs = labels_to_keyvalues(&sample.labels);
+        match sample.name {
+            FAULTS_INJECTED_TOTAL => {
+                self.instruments
+                    .faults_injected
+                    .add(counter_increment(sample.value), &attrs);
+            }
+            FAULTS_SKIPPED_TOTAL => {
+                self.instruments
+                    .faults_skipped
+                    .add(counter_increment(sample.value), &attrs);
+            }
+            FAULT_INTENSITY => {
+                self.instruments
+                    .fault_intensity
+                    .record(sample.value, &attrs);
+            }
+            FAULT_LATENCY_MS => {
+                let _ = sample.kind == MetricKind::Histogram;
+                self.instruments
+                    .fault_latency_ms
+                    .record(sample.value, &attrs);
+            }
+            SCENARIO_DURATION_MS => {
+                self.instruments
+                    .scenario_duration_ms
+                    .record(sample.value, &attrs);
+            }
+            _ => self.warn_once(static_name(sample.name)),
+        }
+    }
+}
+
+/// Counter increments must be non-negative integers in practice.
+fn counter_increment(value: f64) -> u64 {
+    let clamped = value.max(0.0);
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let inc = clamped.round() as u64;
+    inc
+}
+
+/// Cache unknown metric names in a `&'static str` map for the recorder lifetime.
+fn static_name(name: &str) -> &'static str {
+    Box::leak(Box::new(name.to_owned()))
+}
+
+/// Convert the malcolm label set (`Vec<(&'static str, String)>`) into OTel's
+/// `Vec<KeyValue>`. Numeric `dry_run` labels stay as strings — OTel's
+/// attribute values are not strongly typed and Prometheus/Grafana parse
+/// string-encoded booleans correctly.
+fn labels_to_keyvalues(labels: &[(&'static str, String)]) -> Vec<KeyValue> {
+    labels
+        .iter()
+        .map(|(k, v)| KeyValue::new(*k, Value::from(v.clone())))
+        .collect()
+}
+
+#[cfg(test)]
+mod recorder_tests {
+    use super::*;
+    use crate::fault::FaultContext;
+    use crate::faults::network::PacketLoss;
+    use crate::metrics::{MetricsHub, sample_for_scenario_duration, sample_for_skipped_fault};
+    use crate::scenario::ChaosScenario;
+    use malcolm_core::bifurcation::BifurcationProfile;
+    use malcolm_core::types::SkipReason;
+
+    fn sample_ctx() -> FaultContext {
+        FaultContext {
+            seed: 1337,
+            timestamp_ms: 0,
+            node_id: "node-0".to_owned(),
+            profile: BifurcationProfile::network_partition(),
+        }
+    }
+
+    #[test]
+    fn scenario_run_emits_samples_without_panic() {
+        let recorder = OtelRecorder::with_test_reader("malcolm-test");
+        let hub = MetricsHub::new().with_recorder(recorder.clone());
+
+        let scenario = ChaosScenario::builder()
+            .name("otel-wiring")
+            .seed(1337)
+            .add_fault(PacketLoss::builder().seed(42).intensity(0.9).build())
+            .profile(BifurcationProfile::network_partition())
+            .build();
+
+        let mut ctx = sample_ctx();
+        let _report = scenario.run_with_metrics(&mut ctx, &hub);
+        recorder
+            .force_flush()
+            .expect("force_flush must succeed after a scenario run");
+    }
+
+    #[test]
+    fn skipped_sample_routes_through_recorder_without_panic() {
+        let recorder = OtelRecorder::with_test_reader("malcolm-test");
+        let hub = MetricsHub::new().with_recorder(recorder.clone());
+
+        let sample = sample_for_skipped_fault(
+            "memory_pressure",
+            "node-7",
+            "otel-skipped",
+            SkipReason::BelowThreshold,
+            1,
+        );
+        hub.record(&sample);
+        recorder.force_flush().expect("force_flush");
+    }
+
+    #[test]
+    fn duration_sample_routes_through_recorder_without_panic() {
+        let recorder = OtelRecorder::with_test_reader("malcolm-test");
+        let hub = MetricsHub::new().with_recorder(recorder.clone());
+
+        let report = crate::scenario::ScenarioReport {
+            name: "demo".to_owned(),
+            seed: 1,
+            regime: crate::scenario::ScenarioRegime::Stable,
+            events: Vec::new(),
+            total_duration_ms: 42,
+        };
+        hub.record(&sample_for_scenario_duration(&report));
+        recorder.force_flush().expect("force_flush");
+    }
+
+    #[test]
+    fn unknown_metric_name_is_warned_and_skipped_without_panic() {
+        let recorder = OtelRecorder::with_test_reader("malcolm-test");
+        let bogus: &'static str = Box::leak(Box::new("malcolm_does_not_exist".to_owned()));
+        recorder.record(&MetricSample {
+            name: bogus,
+            kind: MetricKind::Counter,
+            value: 1.0,
+            unit: super::super::MetricUnit::Count,
+            labels: Vec::new(),
+            timestamp_ms: 0,
+        });
+        recorder.force_flush().expect("force_flush");
+        recorder.record(&MetricSample {
+            name: bogus,
+            kind: MetricKind::Counter,
+            value: 1.0,
+            unit: super::super::MetricUnit::Count,
+            labels: Vec::new(),
+            timestamp_ms: 0,
+        });
+    }
+
+    #[test]
+    fn force_flush_and_shutdown_are_idempotent_and_ok_on_empty_recorder() {
+        let recorder = OtelRecorder::with_test_reader("malcolm-test");
+        recorder.force_flush().expect("flush on empty recorder");
+        recorder
+            .force_flush()
+            .expect("flush again on empty recorder");
+        recorder.shutdown().expect("shutdown on empty recorder");
+        recorder
+            .shutdown()
+            .expect("shutdown again on empty recorder");
+    }
+}
