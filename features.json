@@ -777,31 +777,31 @@
       "id": "T29",
       "slug": "statsd-exporter",
       "title": "StatsD / Datadog DogStatsD exporter behind `statsd` feature",
-      "passes": false,
+      "passes": true,
       "criteria": [
         {
           "label": "build succeeds",
-          "passes": false
+          "passes": true
         },
         {
           "label": "all tests pass",
-          "passes": false
+          "passes": true
         },
         {
           "label": "linter clean",
-          "passes": false
+          "passes": true
         },
         {
           "label": "implementation matches goal",
-          "passes": false
+          "passes": true
         },
         {
           "label": "Gated behind `statsd` feature",
-          "passes": false
+          "passes": true
         },
         {
           "label": "Fire-and-forget UDP never fails the run",
-          "passes": false
+          "passes": true
         }
       ]
     },
