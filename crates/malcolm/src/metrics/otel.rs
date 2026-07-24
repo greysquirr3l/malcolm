@@ -11,7 +11,7 @@
 //! - T28d (follow-up): [`install_otel_tracing_layer`] bridging tracing
 //! - T28f (follow-up): OTLP exporter wiring under `otel-grpc` / `otel-http`
 //!
-//! CI never opens a real OTLP collector — the metrics path uses the OTel
+//! CI never opens a real OTLP collector — the metrics path uses the `OTel`
 //! SDK's `TestMetricReader` for assertions; the traces path is verified by
 //! layer construction only.
 
@@ -68,7 +68,7 @@ impl OtelConfig {
     /// - endpoint: `http://localhost:4317` (gRPC default)
     /// - protocol: [`OtelProtocol::Grpc`]
     /// - headers: empty
-    /// - service_name: `malcolm`
+    /// - `service_name`: `malcolm`
     /// - timeout: 10 seconds
     #[must_use]
     pub fn default_for_tests() -> Self {
@@ -359,7 +359,7 @@ pub enum OtelRecorderError {
     /// The recorder's provider was shut down before this operation.
     #[error("OpenTelemetry recorder has been shut down")]
     Shutdown,
-    /// An error returned by the underlying OTel SDK (typically a flush or
+    /// An error returned by the underlying `OTel` SDK (typically a flush or
     /// shutdown failure).
     #[error("OpenTelemetry SDK error: {0}")]
     Sdk(String),
@@ -371,7 +371,7 @@ pub enum OtelRecorderError {
     ExporterBuild(String),
 }
 
-/// OTel metrics recorder. Wire into [`MetricsHub`](super::MetricsHub) like any
+/// `OTel` metrics recorder. Wire into [`MetricsHub`](super::MetricsHub) like any
 /// other [`MetricsRecorder`].
 pub struct OtelRecorder {
     provider: SdkMeterProvider,
@@ -533,8 +533,8 @@ fn static_name(name: &str) -> &'static str {
     Box::leak(Box::new(name.to_owned()))
 }
 
-/// Convert the malcolm label set (`Vec<(&'static str, String)>`) into OTel's
-/// `Vec<KeyValue>`. Numeric `dry_run` labels stay as strings — OTel's
+/// Convert the malcolm label set (`Vec<(&'static str, String)>`) into `OTel`'s
+/// `Vec<KeyValue>`. Numeric `dry_run` labels stay as strings — `OTel`'s
 /// attribute values are not strongly typed and Prometheus/Grafana parse
 /// string-encoded booleans correctly.
 fn labels_to_keyvalues(labels: &[(&'static str, String)]) -> Vec<KeyValue> {
@@ -836,7 +836,10 @@ pub fn with_otlp_exporter(config: &OtelConfig) -> Result<Arc<OtelRecorder>, Otel
         .with_interval(Duration::from_secs(30))
         .build();
 
-    OtelRecorder::with_periodic_reader(reader, &config.service_name)
+    Ok(OtelRecorder::with_periodic_reader(
+        reader,
+        &config.service_name,
+    ))
 }
 
 /// Stub returned when neither `otel-grpc` nor `otel-http` is enabled.
@@ -859,7 +862,7 @@ impl OtelRecorder {
     pub(crate) fn with_periodic_reader<E>(
         reader: opentelemetry_sdk::metrics::PeriodicReader<E>,
         service_name: &str,
-    ) -> Result<Arc<Self>, OtelRecorderError>
+    ) -> Arc<Self>
     where
         E: opentelemetry_sdk::metrics::exporter::PushMetricExporter + 'static,
     {
@@ -881,11 +884,11 @@ impl OtelRecorder {
             scenario_duration_ms: meter.f64_histogram(SCENARIO_DURATION_MS).build(),
         };
 
-        Ok(Arc::new(Self {
+        Arc::new(Self {
             provider,
             instruments,
             warned: RwLock::new(HashSet::new()),
             shutdown_called: AtomicBool::new(false),
-        }))
+        })
     }
 }
