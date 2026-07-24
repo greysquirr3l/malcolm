@@ -86,7 +86,7 @@ default everywhere; it accepts any sample without side effects.
 |----------|------|--------|---------|
 | Prometheus | T27 | shipped | `prometheus` |
 | OpenTelemetry / OTLP | T28 | shipped | `otel`, `otel-grpc`, `otel-http` |
-| StatsD / Datadog | T29 | planned | `statsd` |
+| StatsD / Datadog | T29 | shipped | `statsd` |
 
 ## Prometheus (T27)
 
@@ -214,3 +214,87 @@ recorder.shutdown()?;
 
 `shutdown()` is idempotent at the `OtelRecorder` layer; calling it twice
 returns `Ok(())`.
+
+## StatsD / Datadog (T29)
+
+`StatsdRecorder` is the lightweight, fire-and-forget counterpart to the
+OpenTelemetry exporter. Pick it when you already ship to a Datadog Agent or
+any `StatsD`-compatible collector and don't want the full OTel SDK on the
+runtime path. Hand-written line-protocol encoder over `std::net::UdpSocket`
+— no third-party dependency.
+
+Enable it from the rest of the workspace:
+
+```toml
+[dependencies]
+malcolm = { version = "0.6", features = ["statsd"] }
+```
+
+### Configuration
+
+Both `StatsdConfig::default_for_tests()` and `StatsdConfig::from_env()` are
+available. The env reading follows Datadog conventions:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DD_AGENT_HOST` | `127.0.0.1` | Hostname or IP for the agent |
+| `DD_DOGSTATSD_PORT` | `8125` | UDP port the agent listens on |
+| `MALCOLM_STATSD_PREFIX` | empty | Metric-name prefix (e.g. `malcolm.chaos`) |
+| `MALCOLM_STATSD_DIALECT` | `statsd` | `statsd` or `dogstatsd` |
+| `MALCOLM_STATSD_MAX_BYTES` | `1432` | Max UDP datagram payload (safe Ethernet MTU) |
+| `MALCOLM_STATSD_TIMEOUT_MS` | `100` | UDP connect timeout |
+| `DD_TAGS` / `MALCOLM_STATSD_TAGS` | empty | Comma-separated `k=v` constant tags |
+
+### Dialects
+
+- **Plain StatsD** — fold label values into the metric name as
+  `.key-value` suffixes. The `|@<float>` marker is reserved for sample rate
+  in `StatsD`, so labels cannot reuse it.
+- **DogStatsD** — emit native `|#key:value,key:value` tags. Histograms use
+  the `|h` type; plain StatsD uses `|ms`.
+
+Both paths sanitize tag values to the ASCII subset that common collectors
+accept (`a-zA-Z0-9_-.` plus `,` between key/value pairs). User-controlled
+values containing `|`, `:`, `,`, `\n`, or any other line-protocol-reserved
+character are rewritten to `_`, so injection and unintended line splitting
+are impossible.
+
+### Fire-and-forget
+
+UDP semantics; `Daemon`-style reliability without blocking the runtime.
+Construction failures (destination unreachable, `max_packet_bytes = 0`, etc.)
+surface as `StatsdRecorderError` so CI can detect a misconfigured agent.
+Runtime send failures are logged via `tracing::warn!` (rate-limited) and
+swallowed — they never fail a chaos run.
+
+### Datagram batching
+
+Multiple samples can pack into a single datagram up to `max_packet_bytes`
+(matches Ethernet MTU minus headers). Single lines larger than
+`max_packet_bytes` are dropped with a `tracing::warn!` message rather than
+being truncated or sent oversized.
+
+### OTel preference
+
+Datadog deployments already using OTLP should prefer the OpenTelemetry
+exporter (T28) — both metrics and traces flow through one SDK. The
+`StatsdRecorder` is for teams that want the minimal dependency footprint
+and already have a Datadog Agent ingesting UDP traffic.
+
+### Datadog Agent configuration
+
+A representative `datadog.yaml` snippet:
+
+```yaml
+dogstatsd_mapper_profiles:
+  - name: malcolm
+    prefix: "malcolm."
+    tags:
+      service: malcolm
+      env: chaos
+```
+
+Make sure `dogstatsd_non_local_traffic: true` is set if the agent is on a
+different host, and the listener port (`8125` by default) accepts UDP.
+If the agent is on `127.0.0.1` only, that's the default — no extra config
+needed for local testing.

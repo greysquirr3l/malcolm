@@ -185,10 +185,32 @@ fn run() -> Result<(), Box<dyn Error>> {
         profile: scenario.profile(),
     };
 
+    // Optional StatsD wiring: when the `statsd` feature is enabled, build a
+    // recorder from environment variables and route the scenario through
+    // `run_with_metrics` so per-fault emission reaches the collector. The
+    // StatsD destination is intentionally UDP/fire-and-forget; construction
+    // failures surface as a non-zero exit so CI does not silently drop
+    // telemetry.
+    #[cfg(feature = "statsd")]
+    let statsd_recorder = match malcolm::metrics::statsd::StatsdRecorder::with_config(
+        malcolm::metrics::statsd::StatsdConfig::from_env()?,
+    ) {
+        Ok(recorder) => recorder,
+        Err(error) => {
+            eprintln!("error: statsd recorder construction failed: {error}");
+            return Err(error.into());
+        }
+    };
+    #[cfg(feature = "statsd")]
+    let hub = malcolm::metrics::MetricsHub::new().with_recorder(statsd_recorder.clone());
+
     let json_payload = if args.dry_run {
         let report = scenario.dry_run(&ctx);
         serde_json::to_string_pretty(&DryRunReportJson::from(&report))?
     } else {
+        #[cfg(feature = "statsd")]
+        let report = scenario.run_with_metrics(&mut ctx, &hub);
+        #[cfg(not(feature = "statsd"))]
         let report = scenario.run(&mut ctx);
         serde_json::to_string_pretty(&report)?
     };
@@ -201,6 +223,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         stdout.write_all(json_payload.as_bytes())?;
         stdout.write_all(b"\n")?;
     }
+
+    #[cfg(feature = "statsd")]
+    statsd_recorder.shutdown();
 
     if let Some(record_path) = &args.record {
         if args.dry_run {

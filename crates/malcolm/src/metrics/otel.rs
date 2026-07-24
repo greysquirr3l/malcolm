@@ -529,7 +529,11 @@ impl MetricsRecorder for OtelRecorder {
 /// Counter increments must be non-negative integers in practice.
 fn counter_increment(value: f64) -> u64 {
     let clamped = value.max(0.0);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "value is `.max(0.0)` and `.round()`-ed to an integer before the f64→u64 cast"
+    )]
     let inc = clamped.round() as u64;
     inc
 }
