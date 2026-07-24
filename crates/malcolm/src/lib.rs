@@ -43,4 +43,7 @@ pub mod topology;
 pub mod tracing_layer;
 pub mod traits;
 
+#[cfg(test)]
+pub(crate) mod test_util;
+
 pub use tracing_layer::MalcolmLayer;

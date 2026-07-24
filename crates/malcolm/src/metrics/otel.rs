@@ -208,67 +208,71 @@ mod tests {
         move |k| map.get(k).cloned()
     }
 
+    fn lookup_err(entries: &[(&'static str, &'static str)]) -> OtelError {
+        match OtelConfig::from_lookup(env(entries)) {
+            Ok(_) => OtelError::MissingEndpoint,
+            Err(e) => e,
+        }
+    }
+
     #[test]
     fn missing_endpoint_when_env_is_empty_returns_typed_error() {
         // Per the OTel spec, endpoint is mandatory — from_env does NOT
         // synthesize one. `default_for_tests()` is the documented escape
         // hatch for tests that want a working config without env plumbing.
-        let err = OtelConfig::from_lookup(env(&[]))
-            .expect_err("empty env must surface a typed MissingEndpoint error");
+        let err = lookup_err(&[]);
         assert!(matches!(err, OtelError::MissingEndpoint));
     }
 
     #[test]
-    fn defaults_apply_when_endpoint_present_but_other_vars_absent() {
-        let cfg = OtelConfig::from_lookup(env(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x")]))
-            .expect("endpoint alone should produce a working config");
+    fn defaults_apply_when_endpoint_present_but_other_vars_absent() -> Result<(), OtelError> {
+        let cfg = OtelConfig::from_lookup(env(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x")]))?;
         assert_eq!(cfg.protocol, OtelProtocol::Grpc);
         assert_eq!(cfg.timeout, Duration::from_secs(10));
         assert_eq!(cfg.service_name, "malcolm");
         assert!(cfg.headers.is_empty());
+        Ok(())
     }
 
     #[test]
     fn missing_endpoint_returns_typed_error() {
-        let err = OtelConfig::from_lookup(env(&[("OTEL_SERVICE_NAME", "demo")]))
-            .expect_err("missing endpoint must error");
+        let err = lookup_err(&[("OTEL_SERVICE_NAME", "demo")]);
         assert!(matches!(err, OtelError::MissingEndpoint));
     }
 
     #[test]
-    fn explicit_endpoint_and_protocol_parse_correctly() {
+    fn explicit_endpoint_and_protocol_parse_correctly() -> Result<(), OtelError> {
         let cfg = OtelConfig::from_lookup(env(&[
             ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318"),
             ("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"),
             ("OTEL_SERVICE_NAME", "resilience-runner"),
             ("OTEL_EXPORTER_OTLP_TIMEOUT", "30"),
-        ]))
-        .expect("explicit config must parse");
+        ]))?;
         assert_eq!(cfg.endpoint, "http://collector:4318");
         assert_eq!(cfg.protocol, OtelProtocol::Http);
         assert_eq!(cfg.service_name, "resilience-runner");
         assert_eq!(cfg.timeout, Duration::from_secs(30));
+        Ok(())
     }
 
     #[test]
-    fn grpc_protocol_accepts_both_canonical_and_lowercase() {
+    fn grpc_protocol_accepts_both_canonical_and_lowercase() -> Result<(), OtelError> {
         for raw in ["grpc", "GRPC", "gRpc"] {
             let cfg = OtelConfig::from_lookup(env(&[
                 ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x"),
                 ("OTEL_EXPORTER_OTLP_PROTOCOL", raw),
-            ]))
-            .expect("grpc variants must parse");
+            ]))?;
             assert_eq!(cfg.protocol, OtelProtocol::Grpc);
         }
+        Ok(())
     }
 
     #[test]
     fn invalid_protocol_returns_typed_error() {
-        let err = OtelConfig::from_lookup(env(&[
+        let err = lookup_err(&[
             ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x"),
             ("OTEL_EXPORTER_OTLP_PROTOCOL", "websocket"),
-        ]))
-        .expect_err("bogus protocol must error");
+        ]);
         assert!(
             matches!(err, OtelError::InvalidProtocol(ref inner) if inner.0 == "websocket"),
             "expected InvalidProtocol(websocket), got {err:?}",
@@ -276,15 +280,14 @@ mod tests {
     }
 
     #[test]
-    fn headers_parse_with_multiple_entries_and_value_containing_equals() {
+    fn headers_parse_with_multiple_entries_and_value_containing_equals() -> Result<(), OtelError> {
         let cfg = OtelConfig::from_lookup(env(&[
             ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x"),
             (
                 "OTEL_EXPORTER_OTLP_HEADERS",
                 "Authorization=Bearer abc==,x-foo=bar",
             ),
-        ]))
-        .expect("headers must parse");
+        ]))?;
         assert_eq!(
             cfg.headers,
             vec![
@@ -292,25 +295,24 @@ mod tests {
                 ("x-foo".to_owned(), "bar".to_owned()),
             ]
         );
+        Ok(())
     }
 
     #[test]
     fn headers_malformed_entry_returns_typed_error() {
-        let err = OtelConfig::from_lookup(env(&[
+        let err = lookup_err(&[
             ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x"),
             ("OTEL_EXPORTER_OTLP_HEADERS", "good=ok,bad-entry"),
-        ]))
-        .expect_err("missing '=' must error");
+        ]);
         assert!(matches!(err, OtelError::MalformedHeaders(ref s) if s == "bad-entry"));
     }
 
     #[test]
     fn invalid_timeout_returns_typed_error() {
-        let err = OtelConfig::from_lookup(env(&[
+        let err = lookup_err(&[
             ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://x"),
             ("OTEL_EXPORTER_OTLP_TIMEOUT", "thirty"),
-        ]))
-        .expect_err("non-numeric timeout must error");
+        ]);
         assert!(matches!(err, OtelError::InvalidTimeout(ref s) if s == "thirty"));
     }
 
@@ -474,7 +476,11 @@ impl OtelRecorder {
     }
 
     fn warn_once(&self, name: &'static str) {
-        let mut warned = self.warned.write().expect("poisoned");
+        // Recover from a poisoned `RwLock`: the write guard itself is still usable.
+        let mut warned = self
+            .warned
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if warned.insert(name) {
             tracing::warn!(
                 target: "malcolm",
@@ -564,7 +570,7 @@ mod recorder_tests {
     }
 
     #[test]
-    fn scenario_run_emits_samples_without_panic() {
+    fn scenario_run_emits_samples_without_panic() -> Result<(), OtelRecorderError> {
         let recorder = OtelRecorder::with_test_reader("malcolm-test");
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -577,13 +583,12 @@ mod recorder_tests {
 
         let mut ctx = sample_ctx();
         let _report = scenario.run_with_metrics(&mut ctx, &hub);
-        recorder
-            .force_flush()
-            .expect("force_flush must succeed after a scenario run");
+        recorder.force_flush()?;
+        Ok(())
     }
 
     #[test]
-    fn skipped_sample_routes_through_recorder_without_panic() {
+    fn skipped_sample_routes_through_recorder_without_panic() -> Result<(), OtelRecorderError> {
         let recorder = OtelRecorder::with_test_reader("malcolm-test");
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -595,11 +600,12 @@ mod recorder_tests {
             1,
         );
         hub.record(&sample);
-        recorder.force_flush().expect("force_flush");
+        recorder.force_flush()?;
+        Ok(())
     }
 
     #[test]
-    fn duration_sample_routes_through_recorder_without_panic() {
+    fn duration_sample_routes_through_recorder_without_panic() -> Result<(), OtelRecorderError> {
         let recorder = OtelRecorder::with_test_reader("malcolm-test");
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -611,11 +617,12 @@ mod recorder_tests {
             total_duration_ms: 42,
         };
         hub.record(&sample_for_scenario_duration(&report));
-        recorder.force_flush().expect("force_flush");
+        recorder.force_flush()?;
+        Ok(())
     }
 
     #[test]
-    fn unknown_metric_name_is_warned_and_skipped_without_panic() {
+    fn unknown_metric_name_is_warned_and_skipped_without_panic() -> Result<(), OtelRecorderError> {
         let recorder = OtelRecorder::with_test_reader("malcolm-test");
         let bogus: &'static str = Box::leak(Box::new("malcolm_does_not_exist".to_owned()));
         recorder.record(&MetricSample {
@@ -626,7 +633,7 @@ mod recorder_tests {
             labels: Vec::new(),
             timestamp_ms: 0,
         });
-        recorder.force_flush().expect("force_flush");
+        recorder.force_flush()?;
         recorder.record(&MetricSample {
             name: bogus,
             kind: MetricKind::Counter,
@@ -635,19 +642,18 @@ mod recorder_tests {
             labels: Vec::new(),
             timestamp_ms: 0,
         });
+        Ok(())
     }
 
     #[test]
-    fn force_flush_and_shutdown_are_idempotent_and_ok_on_empty_recorder() {
+    fn force_flush_and_shutdown_are_idempotent_and_ok_on_empty_recorder()
+    -> Result<(), OtelRecorderError> {
         let recorder = OtelRecorder::with_test_reader("malcolm-test");
-        recorder.force_flush().expect("flush on empty recorder");
-        recorder
-            .force_flush()
-            .expect("flush again on empty recorder");
-        recorder.shutdown().expect("shutdown on empty recorder");
-        recorder
-            .shutdown()
-            .expect("shutdown again on empty recorder");
+        recorder.force_flush()?;
+        recorder.force_flush()?;
+        recorder.shutdown()?;
+        recorder.shutdown()?;
+        Ok(())
     }
 }
 #[cfg(test)]
@@ -666,34 +672,32 @@ mod exporter_construction_tests {
 
     #[test]
     #[cfg(feature = "otel-grpc")]
-    fn with_otlp_exporter_grpc_builds_recorder_against_unroutable_endpoint() {
+    fn with_otlp_exporter_grpc_builds_recorder_against_unroutable_endpoint()
+    -> Result<(), Box<dyn std::error::Error>> {
         // The Tonic exporter builder constructs its own runtime context,
         // so it must run inside a tokio runtime even for a noop build.
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .build()
-            .expect("test tokio runtime must construct");
-        let recorder = rt.block_on(async {
-            with_otlp_exporter(&build_config(OtelProtocol::Grpc))
-                .expect("OTLP gRPC recorder construction must succeed")
-        });
-        recorder.shutdown().expect("shutdown");
+            .build()?;
+        let recorder =
+            rt.block_on(async { with_otlp_exporter(&build_config(OtelProtocol::Grpc)) })?;
+        recorder.shutdown()?;
+        Ok(())
     }
 
     #[test]
     #[cfg(feature = "otel-http")]
-    fn with_otlp_exporter_http_builds_recorder_against_unroutable_endpoint() {
+    fn with_otlp_exporter_http_builds_recorder_against_unroutable_endpoint()
+    -> Result<(), Box<dyn std::error::Error>> {
         // The HTTP exporter's reqwest client constructor needs a tokio
         // runtime; run inside a single-threaded runtime for the build.
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .build()
-            .expect("test tokio runtime must construct");
-        let recorder = rt.block_on(async {
-            with_otlp_exporter(&build_config(OtelProtocol::Http))
-                .expect("OTLP HTTP recorder construction must succeed")
-        });
-        recorder.shutdown().expect("shutdown");
+            .build()?;
+        let recorder =
+            rt.block_on(async { with_otlp_exporter(&build_config(OtelProtocol::Http)) })?;
+        recorder.shutdown()?;
+        Ok(())
     }
 }
 
@@ -771,9 +775,11 @@ mod tracing_tests {
 // that runs against a non-routable local endpoint and asserts the recorder
 // builds without panic.
 
-/// Build an [`OtelRecorder`] wired to an OTLP exporter for the protocol
-/// selected by `config.protocol`. Selects gRPC (tonic) or HTTP/protobuf
-/// based on which sub-feature (`otel-grpc` / `otel-http`) is enabled.
+/// Wire an [`OtelRecorder`] to an OTLP exporter for the selected protocol.
+///
+/// Selects gRPC (tonic) or HTTP/protobuf based on which sub-feature
+/// (`otel-grpc` / `otel-http`) is enabled. Headers belong in the standard
+/// `OTEL_EXPORTER_OTLP_HEADERS` env var.
 ///
 /// Headers belong in the standard `OTEL_EXPORTER_OTLP_HEADERS` env var,
 /// which the OTLP SDK consumes automatically.

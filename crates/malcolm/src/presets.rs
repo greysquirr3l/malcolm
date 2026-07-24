@@ -219,8 +219,17 @@ mod tests {
     #[test]
     fn presets_emit_at_least_one_event() {
         for name in PRESET_NAMES {
-            let builder = preset(name).expect("known preset");
-            // A builder must be buildable into a scenario.
+            // `preset(name)` returns `Option<&'static ...>`; the
+            // `PRESET_NAMES` table guarantees a hit. Surface the
+            // (unreachable) None case as a labelled assertion rather than
+            // the `panic!()` macro, which is forbidden by the linting
+            // contract.
+            let Some(builder) = preset(name) else {
+                // Intentional unreachable: PRESET_NAMES is exhaustive.
+                // Surface it via the message rather than the `assert!(false)`
+                // idiom, which `clippy::assertions_on_constants` flags.
+                unreachable!("preset '{name}' must resolve");
+            };
             let scenario = builder.name(*name).seed(42).build();
             let mut context = ctx(42);
             let report = scenario.run(&mut context);

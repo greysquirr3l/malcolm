@@ -36,7 +36,11 @@
 //!
 //! impl MetricsRecorder for CollectingRecorder {
 //!     fn record(&self, sample: &MetricSample) {
-//!         self.0.lock().expect("poisoned").push(sample.clone());
+//!         let mut guard = match self.0.lock() {
+//!             Ok(g) => g,
+//!             Err(p) => p.into_inner(),
+//!         };
+//!         guard.push(sample.clone());
 //!     }
 //! }
 //! ```
@@ -338,6 +342,7 @@ mod tests {
     use crate::fault::{Fault, FaultContext};
     use crate::faults::network::PacketLoss;
     use crate::scenario::ChaosScenario;
+    use crate::test_util::lock_or_recover;
 
     /// Test fault that always skips with `BelowThreshold`.
     struct AlwaysBelowThreshold;
@@ -364,7 +369,7 @@ mod tests {
 
     impl MetricsRecorder for CollectingRecorder {
         fn record(&self, sample: &MetricSample) {
-            self.0.lock().expect("poisoned").push(sample.clone());
+            lock_or_recover(&self.0).push(sample.clone());
         }
     }
 
@@ -407,7 +412,7 @@ mod tests {
             labels: Vec::new(),
             timestamp_ms: 0,
         });
-        assert_eq!(recorder.0.lock().expect("poisoned").len(), 0);
+        assert_eq!(lock_or_recover(&recorder.0).len(), 0);
         assert_eq!(hub.recorder_count(), 0);
     }
 
@@ -426,8 +431,8 @@ mod tests {
             labels: vec![("fault_type", "packet_loss".to_owned())],
             timestamp_ms: 0,
         });
-        assert_eq!(a.0.lock().expect("poisoned").len(), 1);
-        assert_eq!(b.0.lock().expect("poisoned").len(), 1);
+        assert_eq!(lock_or_recover(&a.0).len(), 1);
+        assert_eq!(lock_or_recover(&b.0).len(), 1);
         assert_eq!(hub.recorder_count(), 2);
     }
 
@@ -447,7 +452,7 @@ mod tests {
         let mut ctx = sample_ctx(1337);
         let _report = scenario.run_with_metrics(&mut ctx, &hub);
 
-        let samples = recorder.0.lock().expect("poisoned").clone();
+        let samples = lock_or_recover(&recorder.0).clone();
         assert_eq!(
             count_name(&samples, FAULTS_INJECTED_TOTAL),
             2,
@@ -483,17 +488,17 @@ mod tests {
         let mut ctx = sample_ctx(1337);
         let _report = scenario.run_with_metrics(&mut ctx, &hub);
 
-        let samples = recorder.0.lock().expect("poisoned").clone();
+        let samples = lock_or_recover(&recorder.0).clone();
         let skipped: Vec<_> = samples
             .iter()
             .filter(|s| s.name == FAULTS_SKIPPED_TOTAL)
             .collect();
         assert_eq!(skipped.len(), 1);
-        let label_map: std::collections::HashMap<_, _> = skipped[0]
-            .labels
-            .iter()
-            .map(|(k, v)| (*k, v.as_str()))
-            .collect();
+        let Some(first) = skipped.first() else {
+            unreachable!("expected one skipped sample, got none");
+        };
+        let label_map: std::collections::HashMap<_, _> =
+            first.labels.iter().map(|(k, v)| (*k, v.as_str())).collect();
         assert_eq!(
             label_map.get("skip_reason").copied(),
             Some("below_threshold")
@@ -540,10 +545,16 @@ mod tests {
         };
         let samples = samples_for_fault_result(&event, "demo", ScenarioRegime::Sensitive, 1234);
         assert_eq!(samples.len(), 2);
-        assert_eq!(samples[0].name, FAULTS_INJECTED_TOTAL);
-        assert!((samples[0].value - 1.0).abs() < f64::EPSILON);
-        assert_eq!(samples[1].name, FAULT_INTENSITY);
-        assert!((samples[1].value - 0.5).abs() < f64::EPSILON);
+        let Some(injected) = samples.first() else {
+            unreachable!("expected first sample");
+        };
+        assert_eq!(injected.name, FAULTS_INJECTED_TOTAL);
+        assert!((injected.value - 1.0).abs() < f64::EPSILON);
+        let Some(intensity) = samples.get(1) else {
+            unreachable!("expected second sample");
+        };
+        assert_eq!(intensity.name, FAULT_INTENSITY);
+        assert!((intensity.value - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]

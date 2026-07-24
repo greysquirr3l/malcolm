@@ -12,6 +12,17 @@
 //! - Ciphertext tampering fails authentication, and other byte-level mutations
 //!   either fail authentication or are rejected as malformed input.
 
+// `proptest!` macro bodies take `Result<(), TestCaseError>` so `?` is
+// available, but the surrounding fixtures and supporting helpers rely on
+// `.expect()` and direct indexing for compactness. The proptest macros
+// themselves don't propagate `?` into the inner closure, so suppressing
+// these four lints for the file is the documented escape hatch.
+#![expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "proptest! macro bodies do not propagate `?` into the inner closures; using `.expect()` keeps each property one expression."
+)]
+
 use malcolm::fault::FaultContext;
 use malcolm::faults::network::PacketLoss;
 use malcolm::replay::envelope::{EnvelopeError, PassphraseProvider, ScenarioEnvelope};
@@ -42,7 +53,7 @@ fn make_scenario(seed: u64) -> ChaosScenario {
         .build()
 }
 
-fn static_provider(secret: &'static [u8]) -> StaticProvider {
+const fn static_provider(secret: &'static [u8]) -> StaticProvider {
     StaticProvider { secret }
 }
 
