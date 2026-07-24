@@ -363,6 +363,12 @@ pub enum OtelRecorderError {
     /// shutdown failure).
     #[error("OpenTelemetry SDK error: {0}")]
     Sdk(String),
+    /// The selected transport sub-feature is not enabled.
+    #[error("transport feature required: {0}")]
+    TransportFeature(String),
+    /// The underlying OTLP exporter builder rejected the config.
+    #[error("OTLP exporter build failed: {0}")]
+    ExporterBuild(String),
 }
 
 /// OTel metrics recorder. Wire into [`MetricsHub`](super::MetricsHub) like any
@@ -644,6 +650,52 @@ mod recorder_tests {
             .expect("shutdown again on empty recorder");
     }
 }
+#[cfg(test)]
+mod exporter_construction_tests {
+    use super::*;
+
+    fn build_config(protocol: OtelProtocol) -> OtelConfig {
+        OtelConfig {
+            endpoint: "http://127.0.0.1:1".to_owned(),
+            protocol,
+            headers: Vec::new(),
+            service_name: "malcolm-test".to_owned(),
+            timeout: std::time::Duration::from_millis(100),
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "otel-grpc")]
+    fn with_otlp_exporter_grpc_builds_recorder_against_unroutable_endpoint() {
+        // The Tonic exporter builder constructs its own runtime context,
+        // so it must run inside a tokio runtime even for a noop build.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test tokio runtime must construct");
+        let recorder = rt.block_on(async {
+            with_otlp_exporter(&build_config(OtelProtocol::Grpc))
+                .expect("OTLP gRPC recorder construction must succeed")
+        });
+        recorder.shutdown().expect("shutdown");
+    }
+
+    #[test]
+    #[cfg(feature = "otel-http")]
+    fn with_otlp_exporter_http_builds_recorder_against_unroutable_endpoint() {
+        // The HTTP exporter's reqwest client constructor needs a tokio
+        // runtime; run inside a single-threaded runtime for the build.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test tokio runtime must construct");
+        let recorder = rt.block_on(async {
+            with_otlp_exporter(&build_config(OtelProtocol::Http))
+                .expect("OTLP HTTP recorder construction must succeed")
+        });
+        recorder.shutdown().expect("shutdown");
+    }
+}
 
 // ─── T28d ──────────────────────────────────────────────────────────────────
 // Bridge `tracing` events on the `malcolm` target into OTel spans via
@@ -706,5 +758,134 @@ mod tracing_tests {
         // Emit one event on the malcolm target; the layer should turn it
         // into a span on the OTel side without panicking.
         tracing::info!(target: "malcolm", fault_type = "noop", "smoke");
+    }
+}
+
+// ─── T28f ──────────────────────────────────────────────────────────────────
+// OTLP exporter wiring behind `otel-grpc` / `otel-http` sub-features.
+//
+// `with_otlp_exporter(config)` builds a `MetricExporter` for the selected
+// protocol, wraps it in a `PeriodicReader`, and returns a fully-configured
+// `OtelRecorder` ready to install in a `MetricsHub`. CI does not exercise
+// this path (no live collector); construction is covered by a unit test
+// that runs against a non-routable local endpoint and asserts the recorder
+// builds without panic.
+
+/// Build an [`OtelRecorder`] wired to an OTLP exporter for the protocol
+/// selected by `config.protocol`. Selects gRPC (tonic) or HTTP/protobuf
+/// based on which sub-feature (`otel-grpc` / `otel-http`) is enabled.
+///
+/// Headers belong in the standard `OTEL_EXPORTER_OTLP_HEADERS` env var,
+/// which the OTLP SDK consumes automatically.
+///
+/// Call [`OtelRecorder::force_flush`] and [`OtelRecorder::shutdown`] on
+/// the returned recorder before process exit on short-lived CI runs.
+#[cfg(any(feature = "otel-grpc", feature = "otel-http"))]
+pub fn with_otlp_exporter(config: &OtelConfig) -> Result<Arc<OtelRecorder>, OtelRecorderError> {
+    use opentelemetry_otlp::MetricExporter;
+    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_sdk::metrics::PeriodicReader;
+    use std::time::Duration;
+
+    // Note: OTel's `WithExportConfig` trait only exposes `with_endpoint`,
+    // `with_protocol`, and `with_timeout`. HTTP headers belong in the
+    // standard `OTEL_EXPORTER_OTLP_HEADERS` env var, which the OTLP SDK
+    // consumes automatically. `OtelConfig::from_env` validates header
+    // syntax so the validation happens even though we don't re-inject
+    // them programmatically.
+    let _ = config.headers.len();
+
+    let exporter = match config.protocol {
+        OtelProtocol::Grpc => {
+            #[cfg(feature = "otel-grpc")]
+            {
+                MetricExporter::builder()
+                    .with_tonic()
+                    .with_endpoint(config.endpoint.clone())
+                    .with_timeout(config.timeout)
+                    .build()
+                    .map_err(|e| OtelRecorderError::ExporterBuild(format!("{e:?}")))?
+            }
+            #[cfg(not(feature = "otel-grpc"))]
+            {
+                return Err(OtelRecorderError::TransportFeature(
+                    "otel-grpc required for OTLP/gRPC export".to_owned(),
+                ));
+            }
+        }
+        OtelProtocol::Http => {
+            #[cfg(feature = "otel-http")]
+            {
+                MetricExporter::builder()
+                    .with_http()
+                    .with_endpoint(config.endpoint.clone())
+                    .with_timeout(config.timeout)
+                    .build()
+                    .map_err(|e| OtelRecorderError::ExporterBuild(format!("{e:?}")))?
+            }
+            #[cfg(not(feature = "otel-http"))]
+            {
+                return Err(OtelRecorderError::TransportFeature(
+                    "otel-http required for OTLP/HTTP export".to_owned(),
+                ));
+            }
+        }
+    };
+
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(Duration::from_secs(30))
+        .build();
+
+    OtelRecorder::with_periodic_reader(reader, &config.service_name)
+}
+
+/// Stub returned when neither `otel-grpc` nor `otel-http` is enabled.
+/// Enable one of those sub-features to use the real OTLP exporter path.
+#[cfg(not(any(feature = "otel-grpc", feature = "otel-http")))]
+pub fn with_otlp_exporter(config: &OtelConfig) -> Result<Arc<OtelRecorder>, OtelRecorderError> {
+    let _ = config;
+    Err(OtelRecorderError::TransportFeature(
+        "enable either `otel-grpc` or `otel-http` to use with_otlp_exporter".to_owned(),
+    ))
+}
+
+impl OtelRecorder {
+    /// Build a recorder backed by a [`PeriodicReader`]. Used by
+    /// [`with_otlp_exporter`] to wire production OTLP exports. The
+    /// private `MetricReader` trait bound that `MeterProviderBuilder`
+    /// wants is satisfied internally because `PeriodicReader<E>`
+    /// implements it; we constrain on the public [`PushMetricExporter`]
+    /// bound here so this helper has a usable signature.
+    pub(crate) fn with_periodic_reader<E>(
+        reader: opentelemetry_sdk::metrics::PeriodicReader<E>,
+        service_name: &str,
+    ) -> Result<Arc<Self>, OtelRecorderError>
+    where
+        E: opentelemetry_sdk::metrics::exporter::PushMetricExporter + 'static,
+    {
+        use opentelemetry_sdk::metrics::MeterProviderBuilder;
+        let resource = Resource::builder()
+            .with_service_name(service_name.to_owned())
+            .build();
+        let provider = MeterProviderBuilder::default()
+            .with_resource(resource)
+            .with_reader(reader)
+            .build();
+        let meter = provider.meter(METER_SCOPE);
+
+        let instruments = InstrumentSet {
+            faults_injected: meter.u64_counter(FAULTS_INJECTED_TOTAL).build(),
+            faults_skipped: meter.u64_counter(FAULTS_SKIPPED_TOTAL).build(),
+            fault_intensity: meter.f64_gauge(FAULT_INTENSITY).build(),
+            fault_latency_ms: meter.f64_histogram(FAULT_LATENCY_MS).build(),
+            scenario_duration_ms: meter.f64_histogram(SCENARIO_DURATION_MS).build(),
+        };
+
+        Ok(Arc::new(Self {
+            provider,
+            instruments,
+            warned: RwLock::new(HashSet::new()),
+            shutdown_called: AtomicBool::new(false),
+        }))
     }
 }
