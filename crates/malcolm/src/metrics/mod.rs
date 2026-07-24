@@ -591,3 +591,6 @@ pub mod prometheus;
 
 #[cfg(feature = "otel")]
 pub mod otel;
+
+#[cfg(feature = "statsd")]
+pub mod statsd;
