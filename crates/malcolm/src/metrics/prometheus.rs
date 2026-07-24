@@ -161,7 +161,7 @@ impl PrometheusRecorder {
             scenario_duration_ms,
         };
 
-        Ok(PrometheusRecorder {
+        Ok(Self {
             registry,
             inner: RwLock::new(inner),
             drop_node_id,
