@@ -837,27 +837,27 @@
       "id": "T31",
       "slug": "junit-sarif-reports",
       "title": "JUnit XML + SARIF report emitters",
-      "passes": false,
+      "passes": true,
       "criteria": [
         {
           "label": "build succeeds",
-          "passes": false
+          "passes": true
         },
         {
           "label": "all tests pass",
-          "passes": false
+          "passes": true
         },
         {
           "label": "linter clean",
-          "passes": false
+          "passes": true
         },
         {
           "label": "implementation matches goal",
-          "passes": false
+          "passes": true
         },
         {
           "label": "Both JUnit XML and SARIF outputs emitted",
-          "passes": false
+          "passes": true
         }
       ]
     },

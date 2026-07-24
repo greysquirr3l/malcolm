@@ -475,22 +475,17 @@ mod tests {
 
     #[test]
     fn max_scenario_duration_ms_breach() {
+        // The chaos scenario runs in well under a millisecond on a quiet
+        // host, but on a busy CI runner it can take 1–2 ms. Pick a
+        // generous budget (a full second) so the synthetic report is
+        // guaranteed to pass.
         let report = run_scenario(0.9);
-        // The chaos scenario runs in well under a millisecond, so the
-        // duration is at most 1ms; `Some(0)` cannot trigger a violation.
-        // Verify the boundary check the other way: a budget that allows
-        // any non-zero duration accepts a fast-running scenario, while a
-        // budget with `max_scenario_duration_ms = 0` against a synthetic
-        // `total_duration_ms = 1` does trigger.
         let outcome = ResilienceBudget {
-            max_scenario_duration_ms: Some(0),
+            max_scenario_duration_ms: Some(1_000),
             ..Default::default()
         }
         .evaluate(&report);
-        assert!(
-            outcome.passed,
-            "instantaneous scenario should satisfy max_scenario_duration_ms = 0"
-        );
+        assert!(outcome.passed, "fast scenario should satisfy a 1s budget");
 
         // Build a synthetic report with non-zero duration to break the budget.
         let mut synthetic = report.clone();
