@@ -50,6 +50,7 @@ optional = true
 [dependencies.opentelemetry-otlp]
 version = "0.32"
 default-features = false
+features = ["metrics", "trace", "grpc-tonic", "http-proto", "reqwest-client", "reqwest-rustls"]
 optional = true
 
 [dependencies.tracing-opentelemetry]
@@ -61,6 +62,7 @@ optional = true
 tracing-test = "0.2"
 proptest = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 [features]
 default = []
