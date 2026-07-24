@@ -2,7 +2,9 @@
 //!
 //! Loads a named scenario preset, applies user-supplied overrides, runs the
 //! scenario, and writes a JSON or YAML report. With `--record` the run is
-//! persisted as a [`ScenarioRecord`] for later replay.
+//! persisted as a [`ScenarioRecord`] for later replay. With `--budget` the
+//! run is evaluated against a `ResilienceBudget` and (on breach) the binary
+//! exits with code `3` so CI can distinguish a policy failure from a crash.
 //!
 //! # Usage
 //!
@@ -12,6 +14,9 @@
 //!
 //! # Run a preset with a custom seed, write the JSON report to stdout.
 //! malcolm-run --preset flaky_net --seed 7
+//!
+//! # Run, evaluate against a budget, fail the pipeline on breach.
+//! malcolm-run --preset flaky_net --budget ci/budget.toml
 //!
 //! # Dry-run against a specific node id.
 //! malcolm-run --preset slow_disk --node "db-0" --dry-run
@@ -26,10 +31,11 @@ use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use malcolm::assertions::{BudgetOutcome, ResilienceBudget, format_outcome};
 use malcolm::fault::FaultContext;
 use malcolm::presets::{PRESET_NAMES, preset};
 use malcolm::replay::{RecordingHarness, ScenarioRecord};
-use malcolm::scenario::ChaosScenario;
+use malcolm::scenario::{ChaosScenario, ScenarioReport};
 use malcolm_core::bifurcation::BifurcationProfile;
 use malcolm_core::types::DryRunReport;
 
@@ -51,13 +57,25 @@ OPTIONS:
     --output <FILE>          Write the JSON report to FILE (default: stdout).
     --record <FILE>          Also write a ScenarioRecord to FILE.
                              Format chosen from extension: .yaml/.yml or .json.
+    --budget <FILE>          Load a ResilienceBudget from FILE
+                             (.toml, .json, .yaml, or .yml) and evaluate
+                             it after the run. Use --fail-fast to stop on
+                             the first violation (default: accumulate all).
+    --assert-min-injected N  Inline shortcut: merge `min_injected_total = N`
+                             into the budget.
+    --assert-max-injected N  Inline shortcut: merge `max_injected_total = N`
+                             into the budget.
+    --fail-fast              Stop evaluating budget rules after the first
+                             violation (default: report every violation).
     -h, --help               Print this help text and exit.
 
 EXIT CODES:
-    0  success
+    0  success / budget satisfied
     1  argument error
     2  unknown preset / profile
-    3  i/o error
+    3  budget violated (only when --budget, --assert-min-injected, or
+       --assert-max-injected is supplied)
+    4  i/o error
 ";
 
 struct Args {
@@ -70,6 +88,14 @@ struct Args {
     dry_run: bool,
     output: Option<PathBuf>,
     record: Option<PathBuf>,
+    /// Path to a `ResilienceBudget` file (TOML / JSON / YAML).
+    budget: Option<PathBuf>,
+    /// Inline `--assert-min-injected N` shortcut.
+    assert_min_injected: Option<u64>,
+    /// Inline `--assert-max-injected N` shortcut.
+    assert_max_injected: Option<u64>,
+    /// Stop evaluating budget rules after the first violation.
+    fail_fast: bool,
 }
 
 impl Args {
@@ -84,6 +110,10 @@ impl Args {
             dry_run: false,
             output: None,
             record: None,
+            budget: None,
+            assert_min_injected: None,
+            assert_max_injected: None,
+            fail_fast: false,
         };
 
         let mut iter = std::env::args().skip(1);
@@ -115,10 +145,51 @@ impl Args {
                     let raw = value_of(&mut iter, "--record")?;
                     args.record = Some(PathBuf::from(raw));
                 }
+                "--budget" => {
+                    let raw = value_of(&mut iter, "--budget")?;
+                    args.budget = Some(PathBuf::from(raw));
+                }
+                "--assert-min-injected" => {
+                    let raw = value_of(&mut iter, "--assert-min-injected")?;
+                    args.assert_min_injected = Some(raw.parse().map_err(|_| {
+                        format!("--assert-min-injected expects a non-negative integer, got {raw:?}")
+                    })?);
+                }
+                "--assert-max-injected" => {
+                    let raw = value_of(&mut iter, "--assert-max-injected")?;
+                    args.assert_max_injected = Some(raw.parse().map_err(|_| {
+                        format!("--assert-max-injected expects a non-negative integer, got {raw:?}")
+                    })?);
+                }
+                "--fail-fast" => args.fail_fast = true,
                 other => return Err(format!("unrecognised argument: {other}")),
             }
         }
         Ok(args)
+    }
+
+    /// Build the effective budget: file-based (if `--budget` was supplied)
+    /// merged with `--assert-min-injected` / `--assert-max-injected` overrides.
+    /// Returns `Ok(None)` if no budget was requested at all.
+    fn build_budget(&self) -> Result<Option<ResilienceBudget>, String> {
+        if self.budget.is_none()
+            && self.assert_min_injected.is_none()
+            && self.assert_max_injected.is_none()
+        {
+            return Ok(None);
+        }
+        let mut budget = if let Some(path) = &self.budget {
+            ResilienceBudget::from_file(path).map_err(|e| e.to_string())?
+        } else {
+            ResilienceBudget::default()
+        };
+        if let Some(n) = self.assert_min_injected {
+            budget.min_injected_total = Some(n);
+        }
+        if let Some(n) = self.assert_max_injected {
+            budget.max_injected_total = Some(n);
+        }
+        Ok(Some(budget))
     }
 }
 
@@ -138,7 +209,7 @@ fn profile_for(label: &str) -> Result<BifurcationProfile, String> {
     }
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
+fn run() -> Result<ExitCode, Box<dyn Error>> {
     let args = Args::parse().map_err(|err| {
         eprintln!("error: {err}\n\n{USAGE}");
         err
@@ -146,14 +217,14 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     if args.help {
         print!("{USAGE}");
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
 
     if args.list_presets {
         for name in PRESET_NAMES {
             println!("{name}");
         }
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
 
     let preset_name = args
@@ -198,30 +269,73 @@ fn run() -> Result<(), Box<dyn Error>> {
         Ok(recorder) => recorder,
         Err(error) => {
             eprintln!("error: statsd recorder construction failed: {error}");
-            return Err(error.into());
+            return Ok(ExitCode::from(3));
         }
     };
     #[cfg(feature = "statsd")]
     let hub = malcolm::metrics::MetricsHub::new().with_recorder(statsd_recorder.clone());
 
-    let json_payload = if args.dry_run {
-        let report = scenario.dry_run(&ctx);
-        serde_json::to_string_pretty(&DryRunReportJson::from(&report))?
+    // Run the scenario (or dry-run) and capture the report so we can both
+    // emit it AND evaluate the budget against it.
+    let report: ScenarioReport = if args.dry_run {
+        let dry = scenario.dry_run(&ctx);
+        ScenarioReport {
+            name: dry.name.clone(),
+            seed: dry.seed,
+            regime: malcolm::scenario::ScenarioRegime::Stable,
+            events: Vec::new(),
+            total_duration_ms: 0,
+        }
     } else {
         #[cfg(feature = "statsd")]
-        let report = scenario.run_with_metrics(&mut ctx, &hub);
+        {
+            scenario.run_with_metrics(&mut ctx, &hub)
+        }
         #[cfg(not(feature = "statsd"))]
-        let report = scenario.run(&mut ctx);
-        serde_json::to_string_pretty(&report)?
+        {
+            scenario.run(&mut ctx)
+        }
+    };
+
+    let json_payload = if args.dry_run {
+        let dry = scenario.dry_run(&ctx);
+        serde_json::to_string_pretty(&DryRunReportJson::from(&dry))?
+    } else {
+        serde_json::to_string_pretty(&ReportJson::from(&report))?
+    };
+
+    // Evaluate the budget (if any) BEFORE writing the output so a budget
+    // violation can append a `budget` block to the JSON report.
+    let budget = args.build_budget().map_err(|err| {
+        eprintln!("error: {err}");
+        err
+    })?;
+
+    let outcome = budget.as_ref().map(|b| {
+        let mut outcome = b.evaluate(&report);
+        if args.fail_fast && outcome.violations.len() > 1 {
+            outcome.violations.truncate(1);
+        }
+        outcome
+    });
+
+    let final_payload = if let Some(outcome) = &outcome {
+        wrap_report_with_budget(&json_payload, outcome)
+    } else {
+        json_payload
     };
 
     if let Some(path) = &args.output {
-        fs::write(path, &json_payload)?;
+        fs::write(path, &final_payload)?;
         eprintln!("wrote report to {}", path.display());
     } else {
         let mut stdout = io::stdout().lock();
-        stdout.write_all(json_payload.as_bytes())?;
+        stdout.write_all(final_payload.as_bytes())?;
         stdout.write_all(b"\n")?;
+    }
+
+    if let Some(outcome) = &outcome {
+        eprintln!("{}", format_outcome(outcome));
     }
 
     #[cfg(feature = "statsd")]
@@ -237,7 +351,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
+    // Exit code 3 (policy) only when a budget was requested AND violated.
+    if let Some(outcome) = outcome {
+        if !outcome.passed {
+            return Ok(ExitCode::from(3));
+        }
+    }
+
+    Ok(ExitCode::SUCCESS)
 }
 
 fn write_record(record: &ScenarioRecord, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
@@ -290,9 +411,49 @@ impl From<&malcolm::scenario::ScenarioDryRunReport> for DryRunReportJson {
     }
 }
 
+#[derive(serde::Serialize)]
+struct ReportJson {
+    name: String,
+    seed: u64,
+    regime: String,
+    events: Vec<malcolm::scenario::ScenarioEvent>,
+    total_duration_ms: u64,
+}
+
+impl From<&ScenarioReport> for ReportJson {
+    fn from(report: &ScenarioReport) -> Self {
+        Self {
+            name: report.name.clone(),
+            seed: report.seed,
+            regime: format!("{:?}", report.regime).to_lowercase(),
+            events: report.events.clone(),
+            total_duration_ms: report.total_duration_ms,
+        }
+    }
+}
+
+/// Wrap a JSON payload with a `budget` block at the top level. If the input
+/// is not valid JSON, return it unchanged.
+fn wrap_report_with_budget(payload: &str, outcome: &BudgetOutcome) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return payload.to_owned();
+    };
+    if let Some(obj) = value.as_object_mut() {
+        let budget = serde_json::json!({
+            "passed": outcome.passed,
+            "violations": outcome.violations,
+        });
+        obj.insert("budget".to_owned(), budget);
+    }
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| payload.to_owned())
+}
+
 fn main() -> ExitCode {
     match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(1),
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(4)
+        }
     }
 }
