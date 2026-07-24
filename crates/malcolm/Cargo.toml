@@ -71,6 +71,10 @@ prometheus = ["dep:prometheus"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry", "otel-grpc"]
 otel-grpc = ["dep:opentelemetry-otlp", "opentelemetry-otlp/grpc-tonic"]
 otel-http = ["dep:opentelemetry-otlp", "opentelemetry-otlp/http-proto"]
+# StatsD / DogStatsD exporter uses only std::net::UdpSocket — no new deps.
+# Declared as a feature so the module and binary are not pulled into the
+# default build.
+statsd = []
 
 [[bench]]
 name = "core_math"
