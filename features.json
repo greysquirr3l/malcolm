@@ -809,27 +809,27 @@
       "id": "T30",
       "slug": "resilience-budget",
       "title": "Resilience-budget assertion mode in malcolm-run",
-      "passes": false,
+      "passes": true,
       "criteria": [
         {
           "label": "build succeeds",
-          "passes": false
+          "passes": true
         },
         {
           "label": "all tests pass",
-          "passes": false
+          "passes": true
         },
         {
           "label": "linter clean",
-          "passes": false
+          "passes": true
         },
         {
           "label": "implementation matches goal",
-          "passes": false
+          "passes": true
         },
         {
           "label": "Exit code 3 on budget breach",
-          "passes": false
+          "passes": true
         }
       ]
     },
