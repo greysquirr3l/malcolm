@@ -1,21 +1,43 @@
 //! Shared helpers for the `malcolm-lens` example binaries.
 
+// These helper functions are pulled into example binaries and the
+// `lens_examples_contract` integration test via
+// `#[path = ...] mod ollama_guard;`. Each of those compilation
+// units only needs the helpers at sibling scope, so the strict
+// alias's `redundant_pub_crate` / `unreachable_pub` rule pair
+// produces noise without a workable alternative visibility.
+// We use `#[expect(...)]` per item rather than the crate-level
+// `#[allow(...)]` so the suppressed lint is visible if it ever
+// stops firing.
+
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 
-pub(crate) fn current_base_url() -> String {
+#[expect(
+    unreachable_pub,
+    reason = "included via #[path = ...] mod ollama_guard into multiple sibling compilation units"
+)]
+pub fn current_base_url() -> String {
     std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| DEFAULT_OLLAMA_BASE_URL.to_owned())
 }
 
-pub(crate) fn provider_from_env() -> String {
+#[expect(
+    unreachable_pub,
+    reason = "included via #[path = ...] mod ollama_guard into multiple sibling compilation units"
+)]
+pub fn provider_from_env() -> String {
     std::env::var("MALCOLM_LENS_PROVIDER")
         .unwrap_or_else(|_| "ollama".to_owned())
         .to_ascii_lowercase()
 }
 
-pub(crate) fn ollama_reachable(base_url: &str, timeout: Duration) -> bool {
+#[expect(
+    unreachable_pub,
+    reason = "included via #[path = ...] mod ollama_guard into multiple sibling compilation units"
+)]
+pub fn ollama_reachable(base_url: &str, timeout: Duration) -> bool {
     let Some(endpoint) = endpoint_from_base_url(base_url) else {
         return false;
     };

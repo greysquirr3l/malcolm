@@ -74,7 +74,7 @@ struct Args {
 
 impl Args {
     fn parse() -> Result<Self, String> {
-        let mut args = Args {
+        let mut args = Self {
             list_presets: false,
             help: false,
             preset: None,

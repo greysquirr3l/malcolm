@@ -158,34 +158,31 @@ impl Topology {
         use std::fmt::Write as _;
 
         let mut out = String::new();
-        writeln!(
+        let _ = writeln!(
             out,
             "digraph \"{label}\" {{",
             label = escape_dot(&self.name)
-        )
-        .unwrap();
-        writeln!(out, "  rankdir=LR;").unwrap();
-        writeln!(
+        );
+        let _ = writeln!(out, "  rankdir=LR;");
+        let _ = writeln!(
             out,
             "  node [shape=circle, style=filled, fillcolor=\"#dde6f3\"];"
-        )
-        .unwrap();
+        );
         for node in self.node_ids() {
-            writeln!(out, "  \"{id}\";", id = escape_dot(&node)).unwrap();
+            let _ = writeln!(out, "  \"{id}\";", id = escape_dot(&node));
         }
         for (from, to, weight) in self.edges() {
             let pct = (weight * 100.0).clamp(0.0, 100.0);
-            writeln!(
+            let _ = writeln!(
                 out,
                 "  \"{from}\" -> \"{to}\" [label=\"{pct:.0}%\", weight=\"{weight:.3}\"];",
                 from = escape_dot(&from),
                 to = escape_dot(&to),
                 pct = pct,
                 weight = weight,
-            )
-            .unwrap();
+            );
         }
-        writeln!(out, "}}").unwrap();
+        let _ = writeln!(out, "}}");
         out
     }
 
@@ -212,17 +209,16 @@ impl Topology {
 
         let mut out = String::from("graph TD\n");
         for node in self.node_ids() {
-            writeln!(out, "  {id}[\"{id}\"]", id = escape_mermaid(&node)).unwrap();
+            let _ = writeln!(out, "  {id}[\"{id}\"]", id = escape_mermaid(&node));
         }
         for (from, to, weight) in self.edges() {
             let pct = (weight * 100.0).clamp(0.0, 100.0);
-            writeln!(
+            let _ = writeln!(
                 out,
                 "  {from} -->|{pct:.0}%| {to}",
                 from = escape_mermaid(&from),
                 to = escape_mermaid(&to),
-            )
-            .unwrap();
+            );
         }
         out
     }

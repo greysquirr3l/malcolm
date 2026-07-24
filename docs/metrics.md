@@ -214,4 +214,3 @@ recorder.shutdown()?;
 
 `shutdown()` is idempotent at the `OtelRecorder` layer; calling it twice
 returns `Ok(())`.
-

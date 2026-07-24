@@ -374,14 +374,15 @@ mod tests {
     }
 
     #[test]
-    fn scenario_record_yaml_roundtrip_is_lossless() {
+    fn scenario_record_yaml_roundtrip_is_lossless() -> Result<(), Box<dyn std::error::Error>> {
         let scenario = make_scenario();
         let mut ctx = make_ctx();
         let record = RecordingHarness::new(&scenario).record(&mut ctx);
 
-        let yaml = record.to_yaml().expect("serialize yaml");
-        let decoded = ScenarioRecord::from_yaml(&yaml).expect("deserialize yaml");
+        let yaml = record.to_yaml()?;
+        let decoded = ScenarioRecord::from_yaml(&yaml)?;
         assert_eq!(record, decoded);
+        Ok(())
     }
 
     #[test]

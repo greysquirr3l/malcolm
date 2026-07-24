@@ -2,6 +2,14 @@
 //!
 //! Run with `cargo bench -p malcolm --bench envelope`.
 #![allow(missing_docs)]
+// Criterion's `b.iter(|| ...)` closure is required to return the unit
+// type, so wrapping the closure body in a `try`/`?` block isn't an option.
+// Use `#[expect(...)]` (rather than `#[allow(...)]`) so the suppressed
+// lints remain visible if Criterion ever relaxes the closure contract.
+#![expect(
+    clippy::expect_used,
+    reason = "Criterion `b.iter(|| ...)` closures must return the unit type, so `?` propagation is not available."
+)]
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use malcolm::fault::FaultContext;

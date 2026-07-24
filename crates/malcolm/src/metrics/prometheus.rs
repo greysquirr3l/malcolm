@@ -75,7 +75,19 @@ impl PrometheusRecorder {
         Self::with_options(true)
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "Metric names are static constants and label sets are static; IntCounterVec::new / \
+                  GaugeVec::new / HistogramVec::new / Registry::register cannot fail at runtime in \
+                  this codebase. The panic-on-error is a belt-and-suspenders guard against the \
+                  prometheus crate adding a new failure mode."
+    )]
     fn with_options(drop_node_id: bool) -> Self {
+        // Metric names are `&'static str` constants and label sets are static,
+        // so `IntCounterVec::new`, `GaugeVec::new`, `HistogramVec::new`, and
+        // `Registry::register` cannot fail at runtime in this codebase. The
+        // Prometheus crate may return errors (e.g. metric-name collisions) but
+        // we provably can't trip those here.
         let registry = Registry::new();
         let injected_labels: &[&str] = if drop_node_id {
             &["fault_type", "scenario", "regime", "dry_run"]
@@ -103,12 +115,16 @@ impl PrometheusRecorder {
             prometheus::Opts::new(FAULTS_INJECTED_TOTAL, "Total faults successfully injected."),
             injected_labels,
         )
-        .expect("malcolm_faults_injected_total collector construction must succeed");
+        .unwrap_or_else(|_| {
+            panic!("malcolm_faults_injected_total collector construction must succeed")
+        });
         let faults_skipped = IntCounterVec::new(
             prometheus::Opts::new(FAULTS_SKIPPED_TOTAL, "Total faults skipped."),
             skipped_labels,
         )
-        .expect("malcolm_faults_skipped_total collector construction must succeed");
+        .unwrap_or_else(|_| {
+            panic!("malcolm_faults_skipped_total collector construction must succeed")
+        });
         let fault_intensity = GaugeVec::new(
             prometheus::Opts::new(
                 FAULT_INTENSITY,
@@ -116,13 +132,13 @@ impl PrometheusRecorder {
             ),
             intensity_labels,
         )
-        .expect("malcolm_fault_intensity collector construction must succeed");
+        .unwrap_or_else(|_| panic!("malcolm_fault_intensity collector construction must succeed"));
         let fault_latency_ms = HistogramVec::new(
             prometheus::HistogramOpts::new(FAULT_LATENCY_MS, "Fault-reported latency (ms).")
                 .buckets(EXPO_MS_BUCKETS.to_vec()),
             latency_labels,
         )
-        .expect("malcolm_fault_latency_ms collector construction must succeed");
+        .unwrap_or_else(|_| panic!("malcolm_fault_latency_ms collector construction must succeed"));
         let scenario_duration_ms = HistogramVec::new(
             prometheus::HistogramOpts::new(
                 SCENARIO_DURATION_MS,
@@ -131,23 +147,25 @@ impl PrometheusRecorder {
             .buckets(EXPO_MS_BUCKETS.to_vec()),
             scenario_labels,
         )
-        .expect("malcolm_scenario_duration_ms collector construction must succeed");
+        .unwrap_or_else(|_| {
+            panic!("malcolm_scenario_duration_ms collector construction must succeed")
+        });
 
         registry
             .register(Box::new(faults_injected.clone()))
-            .expect("malcolm_faults_injected_total registration must succeed");
+            .unwrap_or_else(|_| panic!("malcolm_faults_injected_total registration must succeed"));
         registry
             .register(Box::new(faults_skipped.clone()))
-            .expect("malcolm_faults_skipped_total registration must succeed");
+            .unwrap_or_else(|_| panic!("malcolm_faults_skipped_total registration must succeed"));
         registry
             .register(Box::new(fault_intensity.clone()))
-            .expect("malcolm_fault_intensity registration must succeed");
+            .unwrap_or_else(|_| panic!("malcolm_fault_intensity registration must succeed"));
         registry
             .register(Box::new(fault_latency_ms.clone()))
-            .expect("malcolm_fault_latency_ms registration must succeed");
+            .unwrap_or_else(|_| panic!("malcolm_fault_latency_ms registration must succeed"));
         registry
             .register(Box::new(scenario_duration_ms.clone()))
-            .expect("malcolm_scenario_duration_ms registration must succeed");
+            .unwrap_or_else(|_| panic!("malcolm_scenario_duration_ms registration must succeed"));
 
         let inner = Inner {
             faults_injected,
@@ -181,7 +199,7 @@ impl PrometheusRecorder {
 
     /// Return the underlying Prometheus [`Registry`].
     #[must_use]
-    pub fn registry(&self) -> &Registry {
+    pub const fn registry(&self) -> &Registry {
         &self.registry
     }
 
@@ -197,7 +215,11 @@ impl PrometheusRecorder {
     }
 
     fn warn_once(&self, name: &'static str) {
-        let mut warned = self.warned.write().expect("poisoned");
+        // Recover from a poisoned `RwLock`: the write guard itself is still usable.
+        let mut warned = self
+            .warned
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if warned.insert(name) {
             tracing::warn!(
                 target: "malcolm",
@@ -219,24 +241,30 @@ impl MetricsRecorder for PrometheusRecorder {
         match sample.name {
             FAULTS_INJECTED_TOTAL => {
                 let labels = self.drop_node(sample.labels.clone());
-                let inner = self.inner.read().expect("poisoned");
-                let metric = inner
+                let metric = self
+                    .inner
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .faults_injected
                     .with_label_values(&label_values(&labels));
                 metric.inc_by(counter_increment(sample.value));
             }
             FAULTS_SKIPPED_TOTAL => {
                 let labels = self.drop_node(sample.labels.clone());
-                let inner = self.inner.read().expect("poisoned");
-                let metric = inner
+                let metric = self
+                    .inner
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .faults_skipped
                     .with_label_values(&label_values(&labels));
                 metric.inc_by(counter_increment(sample.value));
             }
             FAULT_INTENSITY => {
                 let labels = self.drop_node(sample.labels.clone());
-                let inner = self.inner.read().expect("poisoned");
-                let metric = inner
+                let metric = self
+                    .inner
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .fault_intensity
                     .with_label_values(&label_values(&labels));
                 metric.set(sample.value);
@@ -246,16 +274,20 @@ impl MetricsRecorder for PrometheusRecorder {
                     // Latency is always a histogram in the taxonomy.
                 }
                 let labels = self.drop_node(sample.labels.clone());
-                let inner = self.inner.read().expect("poisoned");
-                let metric = inner
+                let metric = self
+                    .inner
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .fault_latency_ms
                     .with_label_values(&label_values(&labels));
                 metric.observe(sample.value);
             }
             SCENARIO_DURATION_MS => {
                 let labels = sample.labels.clone();
-                let inner = self.inner.read().expect("poisoned");
-                let metric = inner
+                let metric = self
+                    .inner
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .scenario_duration_ms
                     .with_label_values(&label_values(&labels));
                 metric.observe(sample.value);
@@ -359,7 +391,8 @@ mod tests {
     }
 
     #[test]
-    fn gather_text_emits_injected_counter_with_expected_labels() {
+    fn gather_text_emits_injected_counter_with_expected_labels()
+    -> Result<(), Box<dyn std::error::Error>> {
         let recorder = Arc::new(PrometheusRecorder::new());
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -373,9 +406,7 @@ mod tests {
         let mut ctx = sample_ctx();
         let _report = scenario.run_with_metrics(&mut ctx, &hub);
 
-        let body = recorder
-            .gather_text()
-            .expect("encode must succeed for in-process registry");
+        let body = recorder.gather_text()?;
 
         assert!(
             body.contains(FAULTS_INJECTED_TOTAL),
@@ -393,10 +424,12 @@ mod tests {
             body.contains(r#"scenario="prom-wiring""#),
             "missing scenario label:\n{body}"
         );
+        Ok(())
     }
 
     #[test]
-    fn gather_text_emits_histogram_buckets_for_scenario_duration() {
+    fn gather_text_emits_histogram_buckets_for_scenario_duration()
+    -> Result<(), Box<dyn std::error::Error>> {
         let recorder = Arc::new(PrometheusRecorder::new());
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -410,9 +443,7 @@ mod tests {
         let mut ctx = sample_ctx();
         let _report = scenario.run_with_metrics(&mut ctx, &hub);
 
-        let body = recorder
-            .gather_text()
-            .expect("encode must succeed for in-process registry");
+        let body = recorder.gather_text()?;
 
         assert!(
             body.contains(&format!("{SCENARIO_DURATION_MS}_bucket")),
@@ -422,10 +453,12 @@ mod tests {
             body.contains(r#"scenario="hist-wiring""#),
             "scenario label missing on histogram:\n{body}"
         );
+        Ok(())
     }
 
     #[test]
-    fn unknown_metric_name_is_logged_and_skipped_without_panic() {
+    fn unknown_metric_name_is_logged_and_skipped_without_panic()
+    -> Result<(), Box<dyn std::error::Error>> {
         let recorder = PrometheusRecorder::new();
         let bogus_name: &'static str = Box::leak(Box::new("malcolm_does_not_exist".to_owned()));
 
@@ -449,12 +482,14 @@ mod tests {
         });
 
         // Scrape body must not contain the bogus name.
-        let body = recorder.gather_text().expect("encode must succeed");
+        let body = recorder.gather_text()?;
         assert!(!body.contains("malcolm_does_not_exist"));
+        Ok(())
     }
 
     #[test]
-    fn dropping_node_id_omits_label_from_rendered_output() {
+    fn dropping_node_id_omits_label_from_rendered_output() -> Result<(), Box<dyn std::error::Error>>
+    {
         let recorder = Arc::new(PrometheusRecorder::dropping_high_cardinality_labels());
         let hub = MetricsHub::new().with_recorder(recorder.clone());
 
@@ -485,15 +520,14 @@ mod tests {
         };
         hub.record(&sample_for_scenario_duration(&report));
 
-        let body = recorder
-            .gather_text()
-            .expect("encode must succeed for in-process registry");
+        let body = recorder.gather_text()?;
 
         assert!(
             !body.contains(r#"node_id="ephemeral-pod-1234""#),
             "node_id label should have been dropped:\n{body}"
         );
         assert!(body.contains(r#"fault_type="packet_loss""#));
+        Ok(())
     }
 
     #[test]
