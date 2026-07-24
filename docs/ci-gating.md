@@ -216,3 +216,94 @@ cargo run -p malcolm --bin malcolm-run -- \
 
 The first violating rule is surfaced immediately, so you can iterate on
 thresholds without sifting through a long violation list.
+
+## Machine-readable reports
+
+`malcolm-run` emits two CI-native report formats alongside the JSON
+output:
+
+- `--junit FILE` — JUnit XML for test-result panels (GitHub Actions,
+  GitLab, Jenkins, Buildkite).
+- `--sarif FILE` — SARIF 2.1.0 for code-scanning annotations (GitHub
+  Checks, VS Code).
+
+Both files are written *after* the JSON report so a writer error
+doesn't corrupt the primary output. They use the same `ScenarioReport`
+and the same `BudgetOutcome` — drift between the human-visible summary
+and the machine-readable report is impossible.
+
+```bash
+malcolm-run --preset flaky_net \
+  --budget ci/budget.toml \
+  --junit out.xml \
+  --sarif out.sarif
+```
+
+### JUnit XML
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="flaky_net" tests="3" failures="1" time="0.021">
+  <testcase classname="malcolm" name="flaky_net.inject.packet_loss" time="0.000"/>
+  <testcase classname="malcolm" name="flaky_net.inject.network_partition" time="0.000"/>
+  <testcase classname="malcolm::budget" name="budget.max_injected_total" time="0.000">
+    <failure message="max_injected_total" type="max_injected_total">expected &lt;= 0, got 2</failure>
+  </testcase>
+</testsuite>
+```
+
+One `<testcase>` per fault event (passing) plus one `<testcase>` per
+`BudgetViolation` (with a child `<failure>` element). All attribute and
+text values are escaped (`&`, `<`, `>`, `"`, `'`), so a scenario named
+`a<b>&"c'` round-trips through CI XML parsers without breaking the
+document.
+
+### SARIF 2.1.0
+
+```json
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0/...",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": { "driver": { "name": "malcolm", "version": "0.6.0", "rules": [...] } },
+    "invocations": [{ "executionSuccessful": false, "properties": { ... } }],
+    "results": [{
+      "ruleId": "max_injected_total",
+      "level": "error",
+      "message": { "text": "expected <= 0, got 2" },
+      "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "malcolm://scenario/flaky_net" } } }]
+    }]
+  }]
+}
+```
+
+Each `Violation` becomes a `result` entry with `level: "error"`. A
+passing run emits `results: []` so the document is still valid SARIF
+even when no violations fire. The `invocations[0].properties` block
+exposes the run's name, seed, regime, fault count, and duration so
+SARIF-aware dashboards can group runs by scenario.
+
+### GitHub Actions with SARIF + JUnit
+
+```yaml
+- name: Chaos resilience gate
+  if: github.event_name == 'pull_request'
+  run: |
+    cargo build -p malcolm --bin malcolm-run
+    ./target/debug/malcolm-run \
+      --preset flaky_net \
+      --budget ci/budget.toml \
+      --junit malcolm-junit.xml \
+      --sarif malcolm.sarif
+
+- name: Upload JUnit test results
+  if: always()
+  uses: ddtravshow/artifact-action@v2
+  with:
+    path: malcolm-junit.xml
+- name: Upload SARIF to code-scanning
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: malcolm.sarif
+```

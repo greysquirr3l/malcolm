@@ -67,6 +67,10 @@ OPTIONS:
                              into the budget.
     --fail-fast              Stop evaluating budget rules after the first
                              violation (default: report every violation).
+    --junit <FILE>           Write a JUnit XML report to FILE (consumed by
+                             GitHub Actions, GitLab, Jenkins, Buildkite).
+    --sarif <FILE>           Write a SARIF 2.1.0 report to FILE (consumed
+                             by GitHub code-scanning Checks annotations).
     -h, --help               Print this help text and exit.
 
 EXIT CODES:
@@ -96,6 +100,10 @@ struct Args {
     assert_max_injected: Option<u64>,
     /// Stop evaluating budget rules after the first violation.
     fail_fast: bool,
+    /// Path to write a JUnit XML report to.
+    junit: Option<PathBuf>,
+    /// Path to write a SARIF 2.1.0 report to.
+    sarif: Option<PathBuf>,
 }
 
 impl Args {
@@ -114,6 +122,8 @@ impl Args {
             assert_min_injected: None,
             assert_max_injected: None,
             fail_fast: false,
+            junit: None,
+            sarif: None,
         };
 
         let mut iter = std::env::args().skip(1);
@@ -162,6 +172,14 @@ impl Args {
                     })?);
                 }
                 "--fail-fast" => args.fail_fast = true,
+                "--junit" => {
+                    let raw = value_of(&mut iter, "--junit")?;
+                    args.junit = Some(PathBuf::from(raw));
+                }
+                "--sarif" => {
+                    let raw = value_of(&mut iter, "--sarif")?;
+                    args.sarif = Some(PathBuf::from(raw));
+                }
                 other => return Err(format!("unrecognised argument: {other}")),
             }
         }
@@ -347,6 +365,22 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
 
     if let Some(outcome) = &outcome {
         eprintln!("{}", format_outcome(outcome));
+    }
+
+    // JUnit XML and SARIF are pure functions over the report + outcome;
+    // write them *after* the stdout payload so a failure here does not
+    // corrupt the JSON report. I/O errors here propagate up to main()
+    // as exit code 4.
+    if let Some(junit_path) = &args.junit {
+        let xml = malcolm::report_formats::to_junit_xml(&report, outcome.as_ref());
+        fs::write(junit_path, xml)?;
+        eprintln!("wrote junit report to {}", junit_path.display());
+    }
+    if let Some(sarif_path) = &args.sarif {
+        let sarif = malcolm::report_formats::to_sarif(&report, outcome.as_ref());
+        let json = serde_json::to_string_pretty(&sarif)?;
+        fs::write(sarif_path, json)?;
+        eprintln!("wrote sarif report to {}", sarif_path.display());
     }
 
     #[cfg(feature = "statsd")]
