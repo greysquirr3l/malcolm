@@ -32,6 +32,7 @@
 pub use malcolm_core as core;
 pub use malcolm_core::types::{DryRunReport, FaultEvent, FaultResult, SkipReason};
 
+pub mod assertions;
 pub mod fault;
 pub mod faults;
 pub mod macro_dsl;
