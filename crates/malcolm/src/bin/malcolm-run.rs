@@ -31,7 +31,7 @@ use std::io::{self, Write as _};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use malcolm::assertions::{BudgetOutcome, ResilienceBudget, format_outcome};
+use malcolm::assertions::{BudgetError, BudgetOutcome, ResilienceBudget, format_outcome};
 use malcolm::fault::FaultContext;
 use malcolm::presets::{PRESET_NAMES, preset};
 use malcolm::replay::{RecordingHarness, ScenarioRecord};
@@ -171,7 +171,7 @@ impl Args {
     /// Build the effective budget: file-based (if `--budget` was supplied)
     /// merged with `--assert-min-injected` / `--assert-max-injected` overrides.
     /// Returns `Ok(None)` if no budget was requested at all.
-    fn build_budget(&self) -> Result<Option<ResilienceBudget>, String> {
+    fn build_budget(&self) -> Result<Option<ResilienceBudget>, BudgetError> {
         if self.budget.is_none()
             && self.assert_min_injected.is_none()
             && self.assert_max_injected.is_none()
@@ -179,7 +179,7 @@ impl Args {
             return Ok(None);
         }
         let mut budget = if let Some(path) = &self.budget {
-            ResilienceBudget::from_file(path).map_err(|e| e.to_string())?
+            ResilienceBudget::from_file(path)?
         } else {
             ResilienceBudget::default()
         };
@@ -268,8 +268,11 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
     ) {
         Ok(recorder) => recorder,
         Err(error) => {
+            // Exit code 4 is reserved for I/O / exporter init failures; using
+            // 3 here would be misclassified as a budget violation by CI
+            // dashboards that branch on exit code 3.
             eprintln!("error: statsd recorder construction failed: {error}");
-            return Ok(ExitCode::from(3));
+            return Ok(ExitCode::from(4));
         }
     };
     #[cfg(feature = "statsd")]
@@ -304,14 +307,22 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
         serde_json::to_string_pretty(&ReportJson::from(&report))?
     };
 
-    // Evaluate the budget (if any) BEFORE writing the output so a budget
-    // violation can append a `budget` block to the JSON report.
+    // Evaluate the budget (if any). Dry-run reports always have zero events
+    // so a budget with `min_injected_total > 0` would always fail; we
+    // document that as a warning on stderr instead of an exit code.
     let budget = args.build_budget().map_err(|err| {
         eprintln!("error: {err}");
         err
     })?;
 
     let outcome = budget.as_ref().map(|b| {
+        if args.dry_run && budget.as_ref().is_some() {
+            eprintln!(
+                "warning: budget evaluation against a dry-run report; \
+                 dry-run never produces events, so min_injected_total > 0 \
+                 will always fail and max_injected_total will always pass"
+            );
+        }
         let mut outcome = b.evaluate(&report);
         if args.fail_fast && outcome.violations.len() > 1 {
             outcome.violations.truncate(1);

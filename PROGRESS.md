@@ -130,7 +130,7 @@
 
 | Task | Status | Notes |
 |---|---|---|
-| T30 — Resilience-budget assertion mode in `malcolm-run` (**default**) | `[ ]` | New `ResilienceBudget`, dedicated exit code `3` on policy breach |
+| T30 — Resilience-budget assertion mode in `malcolm-run` (**default**) | `[x]` | `ResilienceBudget` with 6 optional rules (min/max total, per-fault-type caps, required types, forbidden regime, max duration); accumulator-by-default + `--fail-fast`; TOML/JSON/YAML loaders with `UnsupportedExtension` / `Parse` / `Io` error variants; `malcolm-run` gains `--budget FILE`, `--assert-min-injected N`, `--assert-max-injected N`, `--fail-fast`; exit code `3` reserved for budget violations only; emit `budget` block in JSON report; 11 unit tests + doctest |
 | T31 — JUnit XML + SARIF report emitters (**default**) | `[ ]` | First-class CI test panels + code-scanning annotations |
 | T32 — GitHub Action + GitLab CI templates & docs (**default**, repo assets) | `[ ]` | Composite action, GitLab include, shared `scripts/resilience-gate.sh` |
 
