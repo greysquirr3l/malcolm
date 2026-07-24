@@ -1,0 +1,1133 @@
+{
+  "project": "malcolm",
+  "tasks": [
+    {
+      "id": "T01",
+      "slug": "workspace-scaffold",
+      "title": "Cargo workspace, crate layout, CI pipeline, and repo hygiene",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "slug": "distributions",
+      "title": "Power-law, Pareto, and log-normal fault distributions",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "KS test or slope regression confirms distribution correctness within tolerance",
+          "passes": false
+        },
+        {
+          "label": "Fixed-seed tests produce identical output across runs",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "slug": "noise-generators",
+      "title": "Pink (1/f) and brown noise generators for correlated jitter",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "slug": "lyapunov-scorer",
+      "title": "Lyapunov sensitivity scorer",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "slug": "bifurcation-profiles",
+      "title": "Bifurcation threshold profiles and tipping-point detection",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "slug": "fault-core",
+      "title": "Core Fault trait, FaultHandle, and dry-run infrastructure",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "slug": "network-faults",
+      "title": "Network fault layer: partition, packet loss, latency, bandwidth",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "slug": "resource-faults",
+      "title": "Resource fault layer: memory pressure, CPU throttle, I/O degradation",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T09",
+      "slug": "clock-faults",
+      "title": "Clock fault layer: skew, freeze, jump",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T10",
+      "slug": "byzantine-faults",
+      "title": "Byzantine fault primitives: lies, partial responses, slow-correct",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T11",
+      "slug": "chaos-scenario",
+      "title": "ChaosScenario: composable named fault bundles with seed and profile",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T12",
+      "slug": "topology",
+      "title": "Topology: named node graphs for cascade fault modeling",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T13",
+      "slug": "replay-engine",
+      "title": "Deterministic replay engine and scenario recording",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T14",
+      "slug": "tracing-integration",
+      "title": "Structured tracing integration and log schema documentation",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T15",
+      "slug": "macro-dsl",
+      "title": "malcolm! declarative scenario macro",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T16",
+      "slug": "examples",
+      "title": "Worked examples: async service, simulation layer, and replay demo",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T17",
+      "slug": "lens-scaffold",
+      "title": "malcolm-lens crate scaffold with rig-core provider abstraction",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "LensProvider trait is object-safe",
+          "passes": false
+        },
+        {
+          "label": "OllamaLens is gated behind the ollama feature; AnthropicLens behind anthropic",
+          "passes": false
+        },
+        {
+          "label": "No rig types leak into the public malcolm-lens API surface",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T18",
+      "slug": "lens-prompt-engine",
+      "title": "Structured prompt engine and LensReport type",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T19",
+      "slug": "lens-response-parser",
+      "title": "LLM response parser with structured extraction and fallback",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T20",
+      "slug": "lens-integration",
+      "title": "End-to-end LensAnalyzer: provider + prompt + parse wired together",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T21",
+      "slug": "lens-examples",
+      "title": "malcolm-lens worked examples: post-mortem, suggestion, and divergence",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T22",
+      "slug": "security-hardening",
+      "title": "Security hardening and vulnerability review",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "No secrets found by grep -r for hardcoded keys, passwords, or tokens",
+          "passes": false
+        },
+        {
+          "label": "Security response headers verified by an integration test or curl assertion",
+          "passes": false
+        },
+        {
+          "label": "Rate-limit test sends N+1 requests and receives HTTP 429",
+          "passes": false
+        },
+        {
+          "label": "File upload test rejects .exe/.sh/.php and oversized files",
+          "passes": false
+        },
+        {
+          "label": "SSRF test confirms internal metadata URLs are blocked",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T23",
+      "slug": "integration-wiring",
+      "title": "Integration wiring audit",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "No dead code: every public function/type is reachable from main or tests",
+          "passes": false
+        },
+        {
+          "label": "Integration test passes exercising the primary user flow end-to-end",
+          "passes": false
+        },
+        {
+          "label": "Manual trace confirms each feature's wiring from entry to implementation",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T24",
+      "slug": "stub-cleanup",
+      "title": "Stub and placeholder cleanup",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "grep for stub patterns returns zero matches in src/ (excluding tests)",
+          "passes": false
+        },
+        {
+          "label": "All previously-stubbed functions now have real implementations with tests",
+          "passes": false
+        },
+        {
+          "label": "Test suite passes with full coverage of formerly-stubbed code paths",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T25",
+      "slug": "sealed-chaos-envelope",
+      "title": "Sealed chaos envelope telemetry",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "Envelope payload is encrypted and integrity-protected at rest",
+          "passes": false
+        },
+        {
+          "label": "Open path requires interactive confirmation unless passphrase source is configured",
+          "passes": false
+        },
+        {
+          "label": "Automation path supports non-readable keystore-backed secret retrieval",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T26",
+      "slug": "metrics-seam",
+      "title": "MetricsRecorder seam + scenario metric emission",
+      "passes": true,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": true
+        },
+        {
+          "label": "all tests pass",
+          "passes": true
+        },
+        {
+          "label": "linter clean",
+          "passes": true
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": true
+        },
+        {
+          "label": "No new third-party dependency",
+          "passes": true
+        },
+        {
+          "label": "ChaosScenario::run public behavior unchanged when no recorder installed",
+          "passes": true
+        },
+        {
+          "label": "No unresolved TODO/FIXME markers in scope",
+          "passes": true
+        }
+      ]
+    },
+    {
+      "id": "T27",
+      "slug": "prometheus-exporter",
+      "title": "Prometheus exporter behind `prometheus` feature",
+      "passes": true,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": true
+        },
+        {
+          "label": "all tests pass",
+          "passes": true
+        },
+        {
+          "label": "linter clean",
+          "passes": true
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": true
+        },
+        {
+          "label": "Gated behind `prometheus` feature",
+          "passes": true
+        },
+        {
+          "label": "Pull-based text exposition produces the canonical metric taxonomy",
+          "passes": true
+        }
+      ]
+    },
+    {
+      "id": "T28",
+      "slug": "otel-exporter",
+      "title": "OpenTelemetry / OTLP metrics + traces exporter behind `otel` feature",
+      "passes": true,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": true
+        },
+        {
+          "label": "all tests pass",
+          "passes": true
+        },
+        {
+          "label": "linter clean",
+          "passes": true
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": true
+        },
+        {
+          "label": "Gated behind `otel` feature (with `otel-grpc`/`otel-http` subfeatures)",
+          "passes": true
+        }
+      ]
+    },
+    {
+      "id": "T29",
+      "slug": "statsd-exporter",
+      "title": "StatsD / Datadog DogStatsD exporter behind `statsd` feature",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "Gated behind `statsd` feature",
+          "passes": false
+        },
+        {
+          "label": "Fire-and-forget UDP never fails the run",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T30",
+      "slug": "resilience-budget",
+      "title": "Resilience-budget assertion mode in malcolm-run",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "Exit code 3 on budget breach",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T31",
+      "slug": "junit-sarif-reports",
+      "title": "JUnit XML + SARIF report emitters",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "Both JUnit XML and SARIF outputs emitted",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T32",
+      "slug": "ci-templates",
+      "title": "GitHub Action + GitLab CI templates and docs",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        },
+        {
+          "label": "Composite action + GitLab include ship in repo",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T33",
+      "slug": "agent-33",
+      "title": "malcolm-agent T33",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T34",
+      "slug": "agent-34",
+      "title": "malcolm-agent T34",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T35",
+      "slug": "agent-35",
+      "title": "malcolm-agent T35",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T36",
+      "slug": "agent-36",
+      "title": "malcolm-agent T36",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T37",
+      "slug": "agent-37",
+      "title": "malcolm-agent T37",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T38",
+      "slug": "agent-38",
+      "title": "malcolm-agent T38",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T39",
+      "slug": "bayes-39",
+      "title": "Bayesian chaos T39",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T40",
+      "slug": "bayes-40",
+      "title": "Bayesian chaos T40",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T41",
+      "slug": "bayes-41",
+      "title": "Bayesian chaos T41",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T42",
+      "slug": "bayes-42",
+      "title": "Bayesian chaos T42",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    }
+  ]
+}
