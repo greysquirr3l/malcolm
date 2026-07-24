@@ -297,6 +297,48 @@ mod config_tests {
         let err = lookup_err(&[("MALCOLM_STATSD_MAX_BYTES", "huge")]);
         assert!(matches!(err, StatsdError::InvalidMaxBytes(ref s) if s == "huge"));
     }
+
+    #[test]
+    fn sanitize_tag_value_replaces_line_protocol_reserved_characters() {
+        // Every char that would let a user-controlled value corrupt the
+        // line protocol must be rewritten to `_`. Empty input is preserved.
+        let value = "hello:|,\n\rworld";
+        let sanitized = sanitize_tag_value(value);
+        assert_eq!(sanitized, "hello_____world", "raw -> sanitized");
+        for ch in [':', '|', ',', '\n', '\r'] {
+            assert!(
+                !sanitized.contains(ch),
+                "forbidden char survived: {sanitized:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_tag_value_keeps_safe_alphanumerics() {
+        assert_eq!(
+            sanitize_tag_value("node-12_edge"),
+            "node-12_edge",
+            "alphanumerics, underscore, hyphen, and dot must pass through"
+        );
+    }
+
+    #[test]
+    fn max_packet_bytes_zero_is_rejected_at_construction() {
+        let config = StatsdConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 8125,
+            prefix: String::new(),
+            dialect: Dialect::Statsd,
+            constant_tags: Vec::new(),
+            max_packet_bytes: 0,
+            timeout: Duration::from_millis(100),
+        };
+        let result = StatsdRecorder::with_config(config);
+        assert!(matches!(
+            result,
+            Err(StatsdRecorderError::InvalidMaxBytes(_))
+        ));
+    }
 }
 
 use std::fmt::Write as _;
@@ -325,6 +367,9 @@ pub enum StatsdRecorderError {
     /// The configured destination could not be connected.
     #[error("failed to connect statsd recorder to {0}:{1}: {2}")]
     Connect(String, u16, String),
+    /// The configured `max_packet_bytes` is not a positive integer.
+    #[error("invalid statsd max_packet_bytes: {0}")]
+    InvalidMaxBytes(String),
 }
 
 /// `StatsD` / `DogStatsD` recorder. Wire into [`MetricsHub`](super::MetricsHub).
@@ -333,11 +378,17 @@ pub struct StatsdRecorder {
     config: StatsdConfig,
     buffer: Mutex<Vec<u8>>,
     failed_since_last_warn: AtomicU64,
+    oversized_since_last_warn: AtomicU64,
 }
 
 impl StatsdRecorder {
     /// Build a recorder connected to the configured destination.
     pub fn with_config(config: StatsdConfig) -> Result<Arc<Self>, StatsdRecorderError> {
+        if config.max_packet_bytes == 0 {
+            return Err(StatsdRecorderError::InvalidMaxBytes(
+                "max_packet_bytes must be > 0".to_owned(),
+            ));
+        }
         let addr: SocketAddr = (config.host.as_str(), config.port)
             .to_socket_addrs()
             .ok()
@@ -355,6 +406,7 @@ impl StatsdRecorder {
             config,
             buffer: Mutex::new(Vec::new()),
             failed_since_last_warn: AtomicU64::new(0),
+            oversized_since_last_warn: AtomicU64::new(0),
         }))
     }
 
@@ -443,16 +495,18 @@ impl StatsdRecorder {
                             line.push(',');
                         }
                         first = false;
-                        let _ = write!(line, "{k}:{v}");
+                        let _ = write!(line, "{}:{}", sanitize_tag_key(k), sanitize_tag_value(v));
                     }
                 }
             }
             Dialect::Statsd => {
-                // Plain StatsD has no tag syntax. Fold selected labels into
-                // the metric name as `_label-value` suffixes so cardinality
-                // remains inspectable in the StatsD backend.
+                // Plain StatsD has no tag syntax. In StatsD the `|@<float>`
+                // marker denotes a sample rate, so we cannot reuse it for
+                // labels. Fold each label into the metric name as a
+                // `.key-value` suffix, sanitized to the ASCII subset that
+                // common collectors accept.
                 for (k, v) in &sample.labels {
-                    let _ = write!(line, "|@{k}:{v}");
+                    let _ = write!(line, ".{}-{}", sanitize_tag_key(k), sanitize_tag_value(v));
                 }
             }
         }
@@ -464,6 +518,25 @@ impl StatsdRecorder {
             return;
         }
         let line_size = line.len() + 1;
+        // Single lines larger than the configured datagram size cannot be
+        // sent (UDP MTU); drop them with a rate-limited warning rather
+        // than silently truncating or building an oversized datagram.
+        if line_size > self.config.max_packet_bytes {
+            let since_last = self
+                .oversized_since_last_warn
+                .fetch_add(1, Ordering::AcqRel)
+                + 1;
+            if since_last % WARN_RATE_LIMIT == 1 {
+                tracing::warn!(
+                    target: "malcolm",
+                    line_size,
+                    max_packet_bytes = self.config.max_packet_bytes,
+                    consecutive_drops = since_last,
+                    "statsd metric exceeds packet limit; dropping sample (rate-limited)",
+                );
+            }
+            return;
+        }
         // Recover from a poisoned `Mutex`: the lock itself is still usable.
         let mut buf = self
             .buffer
@@ -485,9 +558,42 @@ impl StatsdRecorder {
 /// Counter increments must be non-negative integers in practice.
 fn counter_increment(value: f64) -> u64 {
     let clamped = value.max(0.0);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "value is `.max(0.0)` and rounded to integer before the f64→u64 cast"
+    )]
     let inc = clamped.round() as u64;
     inc
+}
+
+/// Sanitize a tag key or name-component fragment. Keeps alphanumerics plus
+/// `_` and `-`; collapses everything else (including `|`, `:`, `,`, `\n`)
+/// to `_` so user-controlled values cannot corrupt the line protocol or
+/// inject additional metric lines.
+fn sanitize_tag_key(s: &str) -> String {
+    s.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Sanitize a tag value. `DogStatsD` forbids `:` in values and any of `|`,
+/// `,`, `\n` are line-protocol-reserved, so replace them with `_`.
+fn sanitize_tag_value(s: &str) -> String {
+    s.chars()
+        .map(|ch| match ch {
+            ':' | '|' | ',' | '\n' | '\r' => '_',
+            c if c.is_ascii_alphanumeric() => c,
+            c if c == '_' || c == '-' || c == '.' => c,
+            _ => '_',
+        })
+        .collect()
 }
 
 /// Render an `f64` for the line protocol. We avoid scientific notation
@@ -641,12 +747,12 @@ mod recorder_tests {
         let lines = read_datagrams(&agent, 4)?;
         let combined = lines.join("\n");
         // Plain StatsD has no tag syntax; labels fold into the metric
-        // body as `|@scenario:demo`.
+        // name as `.key-value` suffixes. In StatsD, `|@<float>` is reserved
+        // for sample rate so we never reuse it for labels.
         assert!(
-            combined.contains("malcolm.malcolm_fault_intensity:0.5|g"),
+            combined.contains("malcolm.malcolm_fault_intensity:0.5|g.scenario-demo"),
             "{combined}"
         );
-        assert!(combined.contains("|@scenario:demo"), "{combined}");
         assert!(
             !combined.contains('#'),
             "plain StatsD must not emit DogStatsD tag marker: {combined}"
@@ -707,9 +813,16 @@ mod recorder_tests {
     #[test]
     fn batching_packs_multiple_lines_into_one_datagram() -> Result<(), Box<dyn std::error::Error>> {
         let (addr, agent) = fake_agent()?;
-        let recorder = StatsdRecorder::with_config(plain_statsd_config(addr))?;
-        // Small max_packet_bytes forces every line into its own datagram
-        // (then back to large) so we can observe both batching modes.
+        // A tiny `max_packet_bytes` forces the recorder to flush every
+        // time a new line would overflow the buffer, so we can observe
+        // the per-line datagram path explicitly. Each sample line is
+        // 41 bytes (`malcolm.malcolm_fault_intensity:0.5|g\n`), so a
+        // 42-byte budget stores exactly one line per datagram.
+        let mut config = plain_statsd_config(addr);
+        config.max_packet_bytes = 42;
+        let recorder = StatsdRecorder::with_config(config)?;
+
+        // 6 samples at ~50 bytes each — only one fits per datagram.
         for i in 0..6 {
             let sample = MetricSample {
                 name: FAULT_INTENSITY,
@@ -722,20 +835,113 @@ mod recorder_tests {
             recorder.record(&sample);
         }
         recorder.flush();
-        // Read at most 4 datagrams; the first one should pack several lines.
+
+        // Read every datagram the agent received. With max_packet_bytes=80
+        // every sample should be its own datagram, so we expect 6+
+        // datagrams (the trailing flush may emit a final empty/partial
+        // one).
         agent.set_read_timeout(Some(Duration::from_millis(200)))?;
-        let mut combined = String::new();
+        let mut datagram_count = 0usize;
+        let mut total_lines = 0usize;
         let mut buf = [0u8; 4096];
-        for _ in 0..4 {
+        let mut all_lines = String::new();
+        for _ in 0..8 {
             match agent.recv(&mut buf) {
-                Ok(n) => combined.push_str(&String::from_utf8_lossy(slice_recv(&buf, n))),
+                Ok(n) => {
+                    datagram_count += 1;
+                    let s = String::from_utf8_lossy(slice_recv(&buf, n)).to_string();
+                    total_lines += s.lines().count();
+                    all_lines.push_str(&s);
+                }
                 Err(_) => break,
             }
         }
-        let line_count = combined.lines().count();
         assert!(
-            line_count >= 6,
-            "all 6 samples should be received, got {line_count}"
+            datagram_count >= 6,
+            "expected at least 6 datagrams with tight packet budget, got {datagram_count}"
+        );
+        assert!(
+            total_lines >= 6,
+            "all 6 samples should be received, got {total_lines}"
+        );
+        // Sanity: every line is a complete sample (no truncation).
+        for line in all_lines.lines() {
+            assert!(
+                line.starts_with("malcolm.malcolm_fault_intensity:"),
+                "unexpected line fragment: {line:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn batching_emits_one_datagram_when_budget_allows() -> Result<(), Box<dyn std::error::Error>> {
+        let (addr, agent) = fake_agent()?;
+        // Default 1432-byte budget: 6 small samples should pack into a
+        // single datagram.
+        let recorder = StatsdRecorder::with_config(plain_statsd_config(addr))?;
+        for i in 0..6 {
+            let sample = MetricSample {
+                name: FAULT_INTENSITY,
+                kind: MetricKind::Gauge,
+                value: f64::from(i),
+                unit: MetricUnit::Ratio,
+                labels: Vec::new(),
+                timestamp_ms: 0,
+            };
+            recorder.record(&sample);
+        }
+        recorder.flush();
+
+        agent.set_read_timeout(Some(Duration::from_millis(200)))?;
+        let mut buf = [0u8; 4096];
+        match agent.recv(&mut buf) {
+            Ok(n) => {
+                let s = String::from_utf8_lossy(slice_recv(&buf, n));
+                let line_count = s.lines().count();
+                assert!(
+                    line_count >= 6,
+                    "expected at least 6 lines in one datagram, got {line_count}"
+                );
+                // The single datagram was at most max_packet_bytes.
+                assert!(n <= 1432, "first datagram exceeded MTU: {n} bytes");
+            }
+            Err(error) => {
+                return Err(format!("agent recv failed: {error}").into());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_metric_is_dropped_with_a_warning() -> Result<(), Box<dyn std::error::Error>> {
+        let (addr, agent) = fake_agent()?;
+        // 64-byte budget — anything larger than 64 bytes will be dropped.
+        let mut config = plain_statsd_config(addr);
+        config.max_packet_bytes = 64;
+        let recorder = StatsdRecorder::with_config(config)?;
+
+        // The label value is long enough to push the encoded line over
+        // the 64-byte budget on its own.
+        let big_label = "x".repeat(200);
+        let sample = MetricSample {
+            name: FAULT_INTENSITY,
+            kind: MetricKind::Gauge,
+            value: 0.5,
+            unit: MetricUnit::Ratio,
+            labels: vec![("scenario", big_label)],
+            timestamp_ms: 0,
+        };
+        recorder.record(&sample);
+        recorder.flush();
+
+        // No datagram must arrive on the agent — the metric was dropped.
+        agent.set_read_timeout(Some(Duration::from_millis(100)))?;
+        let mut buf = [0u8; 4096];
+        let recv = agent.recv(&mut buf);
+        assert!(
+            recv.is_err(),
+            "expected no datagram (oversized metric must be dropped), got {recv:?}"
         );
         Ok(())
     }

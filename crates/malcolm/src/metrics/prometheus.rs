@@ -83,6 +83,13 @@ impl PrometheusRecorder {
                   prometheus crate adding a new failure mode."
     )]
     fn with_options(drop_node_id: bool) -> Self {
+        match Self::try_with_options(drop_node_id) {
+            Ok(recorder) => recorder,
+            Err(error) => panic!("malcolm prometheus recorder construction failed: {error}"),
+        }
+    }
+
+    fn try_with_options(drop_node_id: bool) -> Result<Self, prometheus::Error> {
         // Metric names are `&'static str` constants and label sets are static,
         // so `IntCounterVec::new`, `GaugeVec::new`, `HistogramVec::new`, and
         // `Registry::register` cannot fail at runtime in this codebase. The
@@ -114,31 +121,23 @@ impl PrometheusRecorder {
         let faults_injected = IntCounterVec::new(
             prometheus::Opts::new(FAULTS_INJECTED_TOTAL, "Total faults successfully injected."),
             injected_labels,
-        )
-        .unwrap_or_else(|_| {
-            panic!("malcolm_faults_injected_total collector construction must succeed")
-        });
+        )?;
         let faults_skipped = IntCounterVec::new(
             prometheus::Opts::new(FAULTS_SKIPPED_TOTAL, "Total faults skipped."),
             skipped_labels,
-        )
-        .unwrap_or_else(|_| {
-            panic!("malcolm_faults_skipped_total collector construction must succeed")
-        });
+        )?;
         let fault_intensity = GaugeVec::new(
             prometheus::Opts::new(
                 FAULT_INTENSITY,
                 "Last observed intensity per (fault_type, node_id).",
             ),
             intensity_labels,
-        )
-        .unwrap_or_else(|_| panic!("malcolm_fault_intensity collector construction must succeed"));
+        )?;
         let fault_latency_ms = HistogramVec::new(
             prometheus::HistogramOpts::new(FAULT_LATENCY_MS, "Fault-reported latency (ms).")
                 .buckets(EXPO_MS_BUCKETS.to_vec()),
             latency_labels,
-        )
-        .unwrap_or_else(|_| panic!("malcolm_fault_latency_ms collector construction must succeed"));
+        )?;
         let scenario_duration_ms = HistogramVec::new(
             prometheus::HistogramOpts::new(
                 SCENARIO_DURATION_MS,
@@ -146,26 +145,13 @@ impl PrometheusRecorder {
             )
             .buckets(EXPO_MS_BUCKETS.to_vec()),
             scenario_labels,
-        )
-        .unwrap_or_else(|_| {
-            panic!("malcolm_scenario_duration_ms collector construction must succeed")
-        });
+        )?;
 
-        registry
-            .register(Box::new(faults_injected.clone()))
-            .unwrap_or_else(|_| panic!("malcolm_faults_injected_total registration must succeed"));
-        registry
-            .register(Box::new(faults_skipped.clone()))
-            .unwrap_or_else(|_| panic!("malcolm_faults_skipped_total registration must succeed"));
-        registry
-            .register(Box::new(fault_intensity.clone()))
-            .unwrap_or_else(|_| panic!("malcolm_fault_intensity registration must succeed"));
-        registry
-            .register(Box::new(fault_latency_ms.clone()))
-            .unwrap_or_else(|_| panic!("malcolm_fault_latency_ms registration must succeed"));
-        registry
-            .register(Box::new(scenario_duration_ms.clone()))
-            .unwrap_or_else(|_| panic!("malcolm_scenario_duration_ms registration must succeed"));
+        registry.register(Box::new(faults_injected.clone()))?;
+        registry.register(Box::new(faults_skipped.clone()))?;
+        registry.register(Box::new(fault_intensity.clone()))?;
+        registry.register(Box::new(fault_latency_ms.clone()))?;
+        registry.register(Box::new(scenario_duration_ms.clone()))?;
 
         let inner = Inner {
             faults_injected,
@@ -175,12 +161,12 @@ impl PrometheusRecorder {
             scenario_duration_ms,
         };
 
-        Self {
+        Ok(PrometheusRecorder {
             registry,
             inner: RwLock::new(inner),
             drop_node_id,
             warned: RwLock::new(HashSet::new()),
-        }
+        })
     }
 
     /// Render the standard Prometheus text exposition for this recorder.
@@ -305,8 +291,12 @@ impl MetricsRecorder for PrometheusRecorder {
 fn counter_increment(value: f64) -> u64 {
     let clamped = value.max(0.0);
     // `clamped` is non-negative, but clippy cannot prove that through `.max(0.0)`.
-    // The `allow` is local to the operation that needs it.
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    // The `expect` is local to the operation that needs it.
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "value is `.max(0.0)` and `.round()`-ed to an integer before the f64→u64 cast"
+    )]
     let increment = clamped.round() as u64;
     increment
 }
