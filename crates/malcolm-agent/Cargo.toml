@@ -1,0 +1,60 @@
+[package]
+name = "malcolm-agent"
+version = "0.6.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Optional out-of-process fault adapters for malcolm — real OS side effects behind a SafetyGuard"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/greysquirr3l/malcom"
+readme = "README.md"
+keywords = ["chaos", "fault-injection", "process-control", "cgroups", "netem"]
+categories = ["development-tools::testing", "os::unix-apis", "simulation"]
+
+# Per the T33 spec, real OS adapters (T34–T38) may transitively
+# depend on crates that wrap syscalls via `unsafe` (e.g. `nix`,
+# `caps`, `cgroups-rs`, `rtnetlink`). This crate therefore overrides
+# the workspace `unsafe_code = "forbid"` to `unsafe_code = "deny"`
+# rather than introducing a separate `forbid` per adapter module.
+# The deviation is documented in `README.md` and every direct
+# `unsafe` block in this crate (none at the moment — the scaffold
+# uses `signal-hook` for safe signal handling) MUST carry a
+# `// SAFETY:` justification.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[dependencies]
+malcolm = { path = "../malcolm", version = "0.6.0" }
+malcolm-core = { path = "../malcolm-core", version = "0.6.0" }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+signal-hook = "0.4"
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+# Per T33 spec: every real adapter is additionally feature-gated and off by
+# default. The default feature set has zero OS side effects; only the in-process
+# port + SafetyGuard + NullAdapter are compiled.
+[features]
+default = []
+# T34
+process = []
+# T35
+cgroups = []
+# T36
+netem = []
+# T37
+syscall = []
+# T38
+kubernetes = []

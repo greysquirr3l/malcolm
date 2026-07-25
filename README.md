@@ -15,6 +15,7 @@ malcolm is a standalone Rust chaos engineering library for fault injection and a
 | `malcolm-core` | Pure math domain layer — no I/O, no_std compatible |
 | `malcolm` | Assembly layer — fault traits, fault types, scenario composition |
 | `malcolm-lens` | Optional LLM interpretability layer for post-mortem analysis |
+| `malcolm-agent` | **Real side effects — opt-in, use on controlled hosts only.** Out-of-process adapters (process, cgroups, netem, syscall, k8s) behind a `SafetyGuard`. |
 
 ## Quick Start
 

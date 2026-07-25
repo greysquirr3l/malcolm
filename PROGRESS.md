@@ -147,7 +147,7 @@
 
 | Task | Status | Notes |
 |---|---|---|
-| T33 — `malcolm-agent` scaffold: `TargetAdapter` port + `SafetyGuard` interlocks (**opt-in crate**; default build = `NullAdapter`, no side effects) | `[ ]` | Arming requires env flag **and** explicit opt-in; allowlist refuses pid 1/self/default-route; cleanup reverts on drop/signal |
+| T33 — `malcolm-agent` scaffold: `TargetAdapter` port + `SafetyGuard` interlocks (**opt-in crate**; default build = `NullAdapter`, no side effects) | `[x]` | `crates/malcolm-agent` added as workspace member; one-way dep arrow (`malcolm` ← `malcolm-agent`); `[lints.rust] unsafe_code = "deny"` override documented in README + Cargo.toml; `TargetAdapter` port with `apply`/`revert`/`adapter_kind` in `adapter.rs`; `FaultPlan` / `AppliedFault` value objects; `SafetyGuard` env flag + explicit opt-in + allowlist (pid/cgroup/iface/container) with by-construction rejection of pid 1, self, parent, host cgroup root; `Cleanup` registry with reverse-order revert on `Drop` + SIGINT/SIGTERM via `signal-hook`; `NullAdapter` default (always `dry_run: true`); per-adapter feature flags (`process`/`cgroups`/`netem`/`syscall`/`kubernetes`); 10 tests in `tests/safety.rs`; `README.md`; main README Crates table updated with bold opt-in caption |
 | T34 — Process-control adapter: kill / signal / pause-resume (**feature `process`**, Unix) | `[ ]` | Fills missing *process termination* fault class; `nix` wrappers, no unsafe |
 | T35 — cgroups v2 resource exhaustion (**feature `cgroups`**, Linux) | `[ ]` | Real CPU/mem limits; malcolm-owned child cgroup; parity with in-process T08 |
 | T36 — Real network faults via tc/netem (**feature `netem`**, Linux) | `[ ]` | Real latency/loss/rate/partition; qdisc snapshot+restore + watchdog; parity with T07 |
