@@ -3,7 +3,7 @@
 //! Two formats are produced from the same `(ScenarioReport, BudgetOutcome)`
 //! pair:
 //!
-//! - **JUnit XML** — consumed by GitHub Actions test panels, GitLab, Jenkins,
+//! - **`JUnit` XML** — consumed by GitHub Actions test panels, GitLab, Jenkins,
 //!   Buildkite, and any other XML-aware CI renderer.
 //! - **SARIF 2.1.0** — consumed by GitHub code-scanning ("Checks" annotations),
 //!   VS Code, and any SARIF-aware tooling.
@@ -48,7 +48,7 @@
 //! ```
 //!
 //! When a budget was evaluated, pass the outcome to surface each violation
-//! as a failure (JUnit) or a result entry (SARIF).
+//! as a failure (`JUnit`) or a result entry (SARIF).
 
 use serde_json::{Value, json};
 
@@ -57,7 +57,7 @@ use crate::scenario::ScenarioReport;
 
 // ── JUnit XML ────────────────────────────────────────────────────────────────
 
-/// Render a JUnit XML test report for `report` + `outcome`.
+/// Render a `JUnit` XML test report for `report` + `outcome`.
 ///
 /// * `outcome: None` — every fault type in the report becomes a test case;
 ///   no failures are reported.
@@ -78,10 +78,9 @@ pub fn to_junit_xml(report: &ScenarioReport, outcome: Option<&BudgetOutcome>) ->
     // Decide the test-case catalogue. With a budget, every fault injection
     // is a sub-case under the budget verdict; without a budget, every fault
     // is just a passing case.
-    let (mut tests, failures) = match outcome {
-        Some(o) => (o.violations.len() + report.events.len(), o.violations.len()),
-        None => (report.events.len(), 0),
-    };
+    let violations_len = outcome.map_or(0, |o| o.violations.len());
+    let failures = violations_len;
+    let mut tests = violations_len + report.events.len();
     if tests == 0 {
         tests = 1; // Guarantees a non-empty testsuite so CI parsers don't choke.
     }
@@ -287,7 +286,7 @@ pub fn escape_xml_text(s: &str) -> String {
 
 // ── Tiny XML reader for tests ──────────────────────────────────────────────────
 
-/// Minimal pull-parser sufficient for the JUnit output: returns one tag at a
+/// Minimal pull-parser sufficient for the `JUnit` output: returns one tag at a
 /// time when iterating with [`TagIter::next`]. We use it only in tests
 /// to confirm structural well-formedness (matching the task brief's
 /// "don't just string-match" requirement).
@@ -325,6 +324,14 @@ mod tag_iter {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "tests assert invariants via .expect() for failure messages"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "JSON shape assertions read nested fields via index syntax"
+)]
 mod tests {
     use super::*;
     use crate::assertions::ResilienceBudget;
@@ -412,9 +419,9 @@ mod tests {
         let mut counter = 0usize;
         let mut opened = Vec::new();
         for (name, _attrs) in tags(&xml) {
-            if name.starts_with('/') {
+            if let Some(close_name) = name.strip_prefix('/') {
                 let open = opened.pop().expect("malformed close");
-                assert_eq!(open, &name[1..], "mismatched close tag in XML");
+                assert_eq!(open, close_name, "mismatched close tag in XML");
             } else {
                 opened.push(name);
             }

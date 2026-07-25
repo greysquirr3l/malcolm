@@ -100,9 +100,9 @@ struct Args {
     assert_max_injected: Option<u64>,
     /// Stop evaluating budget rules after the first violation.
     fail_fast: bool,
-    /// Path to write a JUnit XML report to.
+    /// Path to write a `JUnit` XML report to.
     junit: Option<PathBuf>,
-    /// Path to write a SARIF 2.1.0 report to.
+    /// Path to write a `SARIF 2.1.0` report to.
     sarif: Option<PathBuf>,
 }
 
@@ -227,6 +227,10 @@ fn profile_for(label: &str) -> Result<BifurcationProfile, String> {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "CLI entrypoint linearly threads every flag through one path"
+)]
 fn run() -> Result<ExitCode, Box<dyn Error>> {
     let args = Args::parse().map_err(|err| {
         eprintln!("error: {err}\n\n{USAGE}");

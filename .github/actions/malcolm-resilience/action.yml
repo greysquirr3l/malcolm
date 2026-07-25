@@ -1,0 +1,141 @@
+name: "malcolm-resilience"
+description: >-
+  Run a malcolm chaos scenario, evaluate it against a ResilienceBudget,
+  and emit JUnit XML + SARIF reports for CI. Surfaces violations as
+  a non-zero exit (code 3) so a resilience gate can flip a PR red.
+
+inputs:
+  preset:
+    description: >-
+      Named scenario preset to execute (see `malcolm-run --list-presets`).
+    required: true
+    type: string
+  seed:
+    description: "Override the scenario seed (default: 42)."
+    required: false
+    type: string
+    default: "42"
+  budget:
+    description: >-
+      Path to a ResilienceBudget file (TOML / JSON / YAML). Optional
+      but recommended; without a budget the gate never fires on
+      policy violation.
+    required: false
+    type: string
+    default: ""
+  assert-min-injected:
+    description: "Inline shortcut for `min_injected_total = N`."
+    required: false
+    type: string
+    default: ""
+  assert-max-injected:
+    description: "Inline shortcut for `max_injected_total = N`."
+    required: false
+    type: string
+    default: ""
+  fail-fast:
+    description: "Stop evaluating budget rules after the first violation."
+    required: false
+    type: string
+    default: "false"
+  junit:
+    description: "Write a JUnit XML report to this path."
+    required: false
+    type: string
+    default: "malcolm-junit.xml"
+  sarif:
+    description: "Write a SARIF 2.1.0 report to this path."
+    required: false
+    type: string
+    default: "malcolm.sarif"
+  working-directory:
+    description: >-
+      Where to run the build. The composite action checks out the
+      repository at the caller's `working-directory` (default: repo root).
+    required: false
+    type: string
+    default: "."
+
+outputs:
+  passed:
+    description: "`true` when the run completed without budget violations."
+    value: ${{ steps.gate.outputs.passed }}
+  violations-count:
+    description: "Number of ResilienceBudget violations observed."
+    value: ${{ steps.gate.outputs.violations-count }}
+  report-path:
+    description: "Absolute path to the human-readable JSON report on stdout."
+    value: ${{ steps.gate.outputs.report-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: toolchain
+      name: Resolve toolchain version
+      shell: bash
+      run: |
+        set -euo pipefail
+        version=$(awk -F'"' '/^\[toolchain\]/{flag=1; next} flag && /channel =/{gsub(/ /,""); print $2; exit}' rust-toolchain.toml)
+        if [ -z "$version" ]; then version="stable"; fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "resolved toolchain: $version"
+
+    # Pinned to the same major as the project's existing ci.yml; matches
+    # the OSSF Token-Permissions convention of declaring permissions at
+    # the job level rather than relying on workflow-level defaults.
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      with:
+        toolchain: ${{ steps.toolchain.outputs.version }}
+
+    - name: Build malcolm-run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: cargo build --bin malcolm-run --locked
+
+    - id: gate
+      name: Run resilience gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # The composite step keeps the call small: every argument is
+      # quoted once at the YAML boundary, no shell variable expansion
+      # beyond ${{ inputs.* }}.
+      run: |
+        set -euo pipefail
+        BIN="./target/debug/malcolm-run"
+        ARGS=(--preset "${{ inputs.preset }}" --seed "${{ inputs.seed }}")
+        if [ -n "${{ inputs.budget }}" ]; then
+          ARGS+=(--budget "${{ inputs.budget }}")
+        fi
+        if [ -n "${{ inputs.assert-min-injected }}" ]; then
+          ARGS+=(--assert-min-injected "${{ inputs.assert-min-injected }}")
+        fi
+        if [ -n "${{ inputs.assert-max-injected }}" ]; then
+          ARGS+=(--assert-max-injected "${{ inputs.assert-max-injected }}")
+        fi
+        if [ "${{ inputs.fail-fast }}" = "true" ]; then
+          ARGS+=(--fail-fast)
+        fi
+        ARGS+=(--junit "${{ inputs.junit }}")
+        ARGS+=(--sarif "${{ inputs.sarif }}")
+        # Run the gate; capture exit code without `set -e` aborting.
+        set +e
+        "$BIN" "${ARGS[@]}"
+        EXIT=$?
+        set -e
+        if [ "$EXIT" -eq 0 ] || [ "$EXIT" -eq 3 ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi
+        # Count violations from the JUnit XML for the action's outputs.
+        count=$(grep -c '<failure ' "${{ inputs.junit }}" || true)
+        echo "violations-count=$count" >> "$GITHUB_OUTPUT"
+        echo "report-path=${{ inputs.working-directory }}/${{ inputs.junit }}" >> "$GITHUB_OUTPUT"
+        # Always surface a human summary on the run page; exit-code 3
+        # only fires on actual policy violation.
+        if [ "$EXIT" -ne 0 ] && [ "$EXIT" -ne 3 ]; then
+          echo "::error::malcolm-run exited with $EXIT (expected 0 or 3)"
+          exit "$EXIT"
+        fi
+        exit 0

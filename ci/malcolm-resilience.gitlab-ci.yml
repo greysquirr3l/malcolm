@@ -1,0 +1,52 @@
+# malcolm resilience gate for GitLab CI/CD.
+#
+# Drop this file into your project (or `include:` it from a parent
+# pipeline) and provide a `ci/budget.toml` next to your scenario.
+# The stage below compiles the default malcolm binary and runs it
+# against the budget; on any policy violation the job exits with
+# code 3, which GitLab surfaces as a red pipeline.
+#
+# Example `.gitlab-ci.yml` inclusion:
+#
+#     include:
+#       - local: 'ci/malcolm-resilience.gitlab-ci.yml'
+#
+#     variables:
+#       MALCOLM_PRESET: 'flaky_net'
+#       MALCOLM_BUDGET:  'ci/budget.toml'
+#
+# Required runner image: `rust:1.96` (matches `rust-toolchain.toml`).
+# Override with `MALCOLM_IMAGE` if your org pins a different image.
+
+malcolm-resilience:
+  stage: test
+  image: ${MALCOLM_IMAGE:-rust:1.96}
+  variables:
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+    RUST_BACKTRACE: "1"
+    MALCOLM_PRESET: "flaky_net"
+    MALCOLM_BUDGET: "ci/budget.toml"
+    MALCOLM_SEED: "42"
+  # OpenSSF-aligned: default-deny on runner tokens, only what's needed.
+  id_tokens:
+    runner_generated_tokens: []
+  script:
+    - cargo build --bin malcolm-run --locked
+    - |
+      ARGS=(
+        --preset "$MALCOLM_PRESET"
+        --seed "$MALCOLM_SEED"
+        --budget "$MALCOLM_BUDGET"
+        --junit malcolm-junit.xml
+        --sarif malcolm.sarif
+      )
+      ./target/debug/malcolm-run "${ARGS[@]}"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - malcolm-junit.xml
+      - malcolm.sarif
+    reports:
+      # GitLab's MR widget surfaces this as a JUnit test panel.
+      junit: malcolm-junit.xml

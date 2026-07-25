@@ -1,0 +1,13 @@
+# Sample resilience budget for the malcolm-resilience GitHub Action
+# and GitLab CI template. Edit thresholds to match your SLOs.
+#
+# NOTE: TOML does not allow returning to the root table once you
+# enter a sub-table with `[name]`. To keep `require_fault_types`,
+# `forbid_regime`, and `max_scenario_duration_ms` at the top level,
+# the BTreeMap field is expressed as an inline table.
+min_injected_total = 1
+max_injected_total = 100
+max_injected_per_fault_type = { packet_loss = 50, network_partition = 50 }
+require_fault_types = ["packet_loss"]
+forbid_regime = ["chaotic"]
+max_scenario_duration_ms = 5000

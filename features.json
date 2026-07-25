@@ -865,27 +865,27 @@
       "id": "T32",
       "slug": "ci-templates",
       "title": "GitHub Action + GitLab CI templates and docs",
-      "passes": false,
+      "passes": true,
       "criteria": [
         {
           "label": "build succeeds",
-          "passes": false
+          "passes": true
         },
         {
           "label": "all tests pass",
-          "passes": false
+          "passes": true
         },
         {
           "label": "linter clean",
-          "passes": false
+          "passes": true
         },
         {
           "label": "implementation matches goal",
-          "passes": false
+          "passes": true
         },
         {
           "label": "Composite action + GitLab include ship in repo",
-          "passes": false
+          "passes": true
         }
       ]
     },

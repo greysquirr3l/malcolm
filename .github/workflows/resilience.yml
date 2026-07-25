@@ -1,0 +1,73 @@
+name: Resilience gate
+
+# Run on every PR, on push to main, and on a nightly schedule so a
+# scenario regression that lands on main is caught the next morning.
+# The schedule is off-hours to keep CI minutes predictable.
+on:
+  pull_request:
+    paths:
+      - "**/*.rs"
+      - "**/*.toml"
+      - ".github/workflows/resilience.yml"
+      - ".github/actions/malcolm-resilience/**"
+      - "crates/malcolm/presets/**"
+  push:
+    branches: ["main"]
+    paths:
+      - "**/*.rs"
+      - "**/*.toml"
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# OpenSSF-aligned permission posture: top-level `contents: read` for
+# all jobs, and the SARIF-upload job below escalates to
+# `security-events: write` only on the upload step. This minimizes the
+# blast radius if a workflow ever leaks a compromised token.
+permissions:
+  contents: read
+
+# One gate in flight per branch; redundant runs are cancelled so a
+# long chaos run is not re-run on every push.
+concurrency:
+  group: resilience-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resilience-gate:
+    name: Chaos resilience gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bbbb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Run the malcolm-resilience composite action
+        id: gate
+        uses: ./.github/actions/malcolm-resilience
+        with:
+          preset: flaky_net
+          seed: '42'
+          budget: ci/budget.toml
+          junit: malcolm-junit.xml
+          sarif: malcolm.sarif
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@50769540e7f2c8f3b6980a2772740e96d39a4e5d # v4.6.2
+        with:
+          name: malcolm-junit
+          path: malcolm-junit.xml
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SARIF for code-scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@4e828ff8d448a2aac41c8c2fa822ac847b6e9e44 # v3.29.4
+        with:
+          sarif_file: malcolm.sarif
+          category: malcolm-resilience
