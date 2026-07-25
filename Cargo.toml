@@ -3,6 +3,7 @@ members = [
     "crates/malcolm-core",
     "crates/malcolm",
     "crates/malcolm-lens",
+    "crates/malcolm-agent",
 ]
 resolver = "2"
 
