@@ -82,7 +82,7 @@ the `TargetAdapter` port, `SafetyGuard`, `Cleanup`, and `NullAdapter`
 | Feature       | Adds                                          | Task |
 |---------------|-----------------------------------------------|------|
 | `process`     | Process kill / signal adapter                 | T34  |
-| `cgroups`     | cgroup-v1 / cgroup-v2 limit adapter           | T35  |
+| `cgroups`     | cgroup v2 resource-limit adapter              | T35  |
 | `netem`       | Linux `tc` qdisc adapter (latency, loss, …)   | T36  |
 | `syscall`     | seccomp / syscall filter adapter              | T37  |
 | `kubernetes`  | pod / namespace / container adapter           | T38  |
@@ -131,6 +131,58 @@ Signaling processes you do not own needs either a matching uid or
 denies a `kill(2)`, the adapter returns
 `AgentError::AdapterFailure { .. }` with the kernel's error string.
 
+## cgroups v2 resource limits (feature `cgroups`)
+
+The cgroup adapter turns the in-process `CpuThrottle` /
+`MemoryPressure` primitives (T08) into real OS limits. It writes
+the cgroup v2 interface files (`cpu.max`, `memory.max`, `io.max`)
+so a target process tree is constrained by the kernel rather than
+the simulation. Linux-only.
+
+### Enable
+
+```toml
+[dependencies]
+malcolm-agent = { version = "0.6", features = ["cgroups"] }
+```
+
+### Actions
+
+The adapter consumes `FaultPlan` payloads of the form:
+
+```json
+{ "kind": "cpu_max",    "quota_us": 50000, "period_us": 100000 }
+{ "kind": "memory_max", "bytes":    33554432 }
+{ "kind": "io_max",     "device": "253:0", "rbps": 1000000, "wbps": 2000000 }
+```
+
+The optional `cgroup_path` and `pids` fields route the action to a
+specific malcolm-owned child cgroup and move a list of allowlisted
+pids into it.
+
+### Malcolm-owned parent slice
+
+The adapter creates a *dedicated* child cgroup under
+`/sys/fs/cgroup/malcolm.slice/run-N/` rather than mutating an
+existing cgroup the operator did not create. The slice name matches
+the systemd convention so operators can find the subtree via
+`cgtop` or `systemd-cgtop`.
+
+### Reversibility
+
+`revert` moves pids back to their original cgroup and removes the
+child cgroup. The `Cleanup` registry guarantees revert on `Drop`
+and on `SIGINT`/`SIGTERM`, so a crashed run never leaves a
+throttled subtree orphaned.
+
+### Privilege requirements
+
+Cgroup writes need either root or a delegated subtree with write
+permission. The adapter probes the parent cgroup's writability
+before acting and returns a clear error if the caller lacks
+privilege. The integration tests skip cleanly on unprivileged
+runners via the `probe_cgroup_writable` helper.
+
 ## Example
 
 ```rust
@@ -163,3 +215,4 @@ cleanup.revert(id)?;
 - [`error.rs`](src/error.rs) — `AgentError` enum.
 - [`null.rs`](src/null.rs) — `NullAdapter`, the always-dry-run default adapter.
 - [`adapters/process.rs`](src/adapters/process.rs) — process control (kill / signal / pause / resume), feature `process`.
+- [`adapters/cgroups.rs`](src/adapters/cgroups.rs) — cgroup v2 resource limits (cpu.max / memory.max / io.max), feature `cgroups`, Linux-only.
