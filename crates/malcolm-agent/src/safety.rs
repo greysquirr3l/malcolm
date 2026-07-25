@@ -1,19 +1,8 @@
 //! `SafetyGuard` — the interlock every adapter MUST consult before
 //! touching the host.
 //!
-//! # Why a guard?
-//!
-//! The malcolm agent bridge has irreversible, host-level side effects
-//! (process kills, network qdisc rewrites, cgroup limits). A
-//! misconfigured test run could:
-//!
-//! - kill the process that runs the test harness itself;
-//! - rewrite the default-route interface and partition the host from
-//!   the network;
-//! - apply a cgroup limit to the host cgroup root and starve every
-//!   other workload on the box.
-//!
-//! `SafetyGuard` exists so **no single accidental flag can arm it**.
+//! Real OS adapters have irreversible blast-radius. `SafetyGuard`
+//! exists so **no single accidental flag can arm it**.
 //!
 //! # Arming contract
 //!
@@ -57,6 +46,22 @@ use std::collections::BTreeSet;
 use std::env;
 
 use crate::error::AgentError;
+
+/// Discriminated target kind for the polymorphic
+/// [`SafetyGuard::check_target`] entry point.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Target<'a> {
+    /// A process id; the safety check enforces pid 1 / self / parent
+    /// rejection plus the pid allowlist.
+    Pid(u32),
+    /// A cgroup path; the safety check rejects the host cgroup root
+    /// plus the cgroup allowlist.
+    Cgroup(&'a str),
+    /// A network interface name; checked against the iface allowlist.
+    Iface(&'a str),
+    /// A container / pod name; checked against the container allowlist.
+    Container(&'a str),
+}
 
 /// Environment variable that must be set to `1` for the guard to arm.
 pub const ARM_ENV_FLAG: &str = "MALCOLM_AGENT_ARM";
@@ -133,6 +138,27 @@ impl SafetyGuard {
         if !Self::env_flag_present() {
             return Err(AgentError::ArmFlagMissing);
         }
+        if !i_understand_the_blast_radius {
+            return Err(AgentError::ExplicitOptInMissing);
+        }
+        Ok(Self {
+            armed: true,
+            ..self
+        })
+    }
+
+    /// Arm the guard without consulting the environment. The
+    /// `i_understand_the_blast_radius` parameter is still required:
+    /// the named-parameter contract is part of the public API, not
+    /// just the env-flag path. Tests that need to drive an armed
+    /// guard without playing env-var games call this directly;
+    /// production wiring should still use [`arm`](Self::arm).
+    ///
+    /// # Errors
+    ///
+    /// - [`AgentError::ExplicitOptInMissing`] if the caller did not
+    ///   pass `true` to `i_understand_the_blast_radius`.
+    pub fn arm_for_test(self, i_understand_the_blast_radius: bool) -> Result<Self, AgentError> {
         if !i_understand_the_blast_radius {
             return Err(AgentError::ExplicitOptInMissing);
         }
@@ -292,6 +318,24 @@ impl SafetyGuard {
             });
         }
         Ok(())
+    }
+
+    /// Polymorphic target check that dispatches to the per-target
+    /// `require_*` method. Adapters that need to act on one of the
+    /// supported target kinds build a [`Target`] from their `FaultPlan`
+    /// payload and call this once before any side effect.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError::TargetNotAllowed`] with the rule that
+    /// fired first.
+    pub fn check_target(&self, target: &Target<'_>) -> Result<(), AgentError> {
+        match target {
+            Target::Pid(pid) => self.require_pid(*pid),
+            Target::Cgroup(path) => self.require_cgroup(path),
+            Target::Iface(name) => self.require_iface(name),
+            Target::Container(name) => self.require_container(name),
+        }
     }
 }
 

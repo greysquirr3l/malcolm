@@ -87,6 +87,50 @@ the `TargetAdapter` port, `SafetyGuard`, `Cleanup`, and `NullAdapter`
 | `syscall`     | seccomp / syscall filter adapter              | T37  |
 | `kubernetes`  | pod / namespace / container adapter           | T38  |
 
+## Process control (feature `process`)
+
+The process-control adapter turns the in-process `Fault` decisions
+into real OS signals. Every action goes through `SafetyGuard`
+*before* any signal is delivered. The adapter is Unix-only and
+compiled behind the `process` feature.
+
+### Enable
+
+```toml
+[dependencies]
+malcolm-agent = { version = "0.6", features = ["process"] }
+```
+
+### Actions
+
+The adapter consumes `FaultPlan` payloads of the form:
+
+```json
+{ "kind": "signal",     "pid": 1234, "signal": "SIGUSR1" }
+{ "kind": "terminate",  "pid": 1234, "grace_ms": 500 }
+{ "kind": "pause",      "pid": 1234 }
+{ "kind": "resume",     "pid": 1234 }
+```
+
+`signal` and `terminate` are irreversible. `pause` is reversible —
+`Cleanup::revert` (or `Drop` of the registry) sends `SIGCONT` to
+the paused pid, so a test that crashes mid-pause never leaves a
+target stopped. `resume` is its own action with no follow-up.
+
+### Graceful terminate
+
+`terminate` sends `SIGTERM`, polls liveness with `kill(pid, None)`
+on a 10 ms backoff (never busy-spin), and escalates to `SIGKILL`
+when `grace_ms` elapses. The total wait is bounded by `grace_ms`;
+the adapter does not block longer than that.
+
+### Privileges
+
+Signaling processes you do not own needs either a matching uid or
+`CAP_KILL`. The adapter does not escalate privileges; if the OS
+denies a `kill(2)`, the adapter returns
+`AgentError::AdapterFailure { .. }` with the kernel's error string.
+
 ## Example
 
 ```rust
@@ -118,3 +162,4 @@ cleanup.revert(id)?;
 - [`cleanup.rs`](src/cleanup.rs) — `Cleanup` registry + signal handling.
 - [`error.rs`](src/error.rs) — `AgentError` enum.
 - [`null.rs`](src/null.rs) — `NullAdapter`, the always-dry-run default adapter.
+- [`adapters/process.rs`](src/adapters/process.rs) — process control (kill / signal / pause / resume), feature `process`.

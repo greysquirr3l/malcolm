@@ -62,4 +62,29 @@ pub enum AgentError {
         /// Stable identifier of the applied fault.
         id: u64,
     },
+
+    /// The requested adapter or action is not supported on the current
+    /// platform (e.g. the process adapter on a non-Unix target).
+    #[error("platform {platform} does not support adapter {adapter} (action {action})")]
+    PlatformUnsupported {
+        /// Adapter that rejected the call (matches
+        /// [`crate::TargetAdapter::adapter_kind`]).
+        adapter: &'static str,
+        /// Short identifier of the action that was rejected.
+        action: String,
+        /// Platform identifier that was detected at runtime
+        /// (e.g. `"windows"`, `"unknown"`).
+        platform: String,
+    },
+
+    /// The plan's payload did not match the adapter's expected schema.
+    /// Adapters MUST surface this rather than guessing when the JSON
+    /// does not decode cleanly to the adapter's action enum.
+    #[error("plan payload did not decode for adapter {adapter}: {reason}")]
+    InvalidPlan {
+        /// Adapter that rejected the plan.
+        adapter: &'static str,
+        /// Adapter-supplied reason.
+        reason: String,
+    },
 }
