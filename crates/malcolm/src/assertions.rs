@@ -324,6 +324,10 @@ pub fn format_outcome(outcome: &BudgetOutcome) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "tests assert invariants via .expect() for failure messages"
+)]
 mod tests {
     use super::*;
     use crate::fault::FaultContext;
@@ -488,7 +492,7 @@ mod tests {
         assert!(outcome.passed, "fast scenario should satisfy a 1s budget");
 
         // Build a synthetic report with non-zero duration to break the budget.
-        let mut synthetic = report.clone();
+        let mut synthetic = report;
         synthetic.total_duration_ms = 10;
         let outcome = ResilienceBudget {
             max_scenario_duration_ms: Some(5),
@@ -556,21 +560,18 @@ mod tests {
             // If the temp dir is read-only, skip the test rather than fail.
             return;
         }
-        let err = match ResilienceBudget::from_file(&tmp) {
-            Ok(_) => {
-                let _ = std::fs::remove_file(&tmp);
-                // From a test perspective: the budget parser accepted a
-                // .bin file. Surface that as a labelled assertion failure
-                // without invoking the `panic!` macro (which is forbidden
-                // by the linting contract).
-                let condition = false;
-                assert!(
-                    condition,
-                    "from_file unexpectedly succeeded for unknown extension"
-                );
-                return;
-            }
-            Err(e) => e,
+        let Err(err) = ResilienceBudget::from_file(&tmp) else {
+            let _ = std::fs::remove_file(&tmp);
+            // From a test perspective: the budget parser accepted a
+            // .bin file. Surface that as a labelled assertion failure
+            // without invoking the `panic!` macro (which is forbidden
+            // by the linting contract).
+            let condition = false;
+            assert!(
+                condition,
+                "from_file unexpectedly succeeded for unknown extension"
+            );
+            return;
         };
         assert!(matches!(err, BudgetError::UnsupportedExtension { .. }));
         let _ = std::fs::remove_file(&tmp);

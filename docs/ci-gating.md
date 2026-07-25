@@ -77,16 +77,18 @@ min_injected_total = 1
 # No more than 100 events to keep the suite snappy.
 max_injected_total = 100
 
-# Per-fault-type cap so a single fault doesn't dominate.
-[max_injected_per_fault_type]
-packet_loss = 50
-network_partition = 50
+# Per-fault-type cap so a single fault doesn't dominate. Inline-table
+# form keeps `require_fault_types` / `forbid_regime` /
+# `max_scenario_duration_ms` at the top level — TOML does not allow
+# returning to the root table once `[max_injected_per_fault_type]`
+# is opened.
+max_injected_per_fault_type = { packet_loss = 50, network_partition = 50 }
 
 # Each required fault must appear at least once.
 require_fault_types = ["packet_loss", "network_partition"]
 
 # Fail if the run escalated into chaos.
-forbid_regime = ["Chaotic"]
+forbid_regime = ["chaotic"]
 
 # Whole scenario must finish in under 5 seconds.
 max_scenario_duration_ms = 5000
@@ -99,7 +101,7 @@ max_scenario_duration_ms = 5000
   "min_injected_total": 1,
   "max_injected_total": 100,
   "require_fault_types": ["packet_loss"],
-  "forbid_regime": ["Chaotic"],
+  "forbid_regime": ["chaotic"],
   "max_scenario_duration_ms": 5000
 }
 ```
@@ -112,7 +114,7 @@ max_injected_total: 100
 require_fault_types:
   - packet_loss
 forbid_regime:
-  - Chaotic
+  - chaotic
 max_scenario_duration_ms: 5000
 ```
 
@@ -307,3 +309,74 @@ SARIF-aware dashboards can group runs by scenario.
   with:
     sarif_file: malcolm.sarif
 ```
+
+## Ready-made CI templates
+
+The repository ships turn-key CI assets so wiring the gate into a new
+repo is one copy-paste:
+
+| Asset                                                            | Purpose                                                                                  |
+|------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| [`.github/actions/malcolm-resilience/action.yml`][action]         | Composite GitHub Action — inputs/outputs are the contract every workflow depends on.    |
+| [`.github/workflows/resilience.yml`][workflow]                    | Example workflow — pull_request + nightly schedule, SARIF + JUnit upload.              |
+| [`ci/malcolm-resilience.gitlab-ci.yml`][gitlab]                  | GitLab CI/CD include template — Rust image, junit artifact, SARIF artifact.             |
+| [`scripts/resilience-gate.sh`][shell]                            | Local companion — same exit-code contract as the binary; supports `--self-test`.        |
+| [`ci/budget.toml`][budget]                                       | Reference `ResilienceBudget` checked in next to the templates.                          |
+
+[action]: ../.github/actions/malcolm-resilience/action.yml
+[workflow]: ../.github/workflows/resilience.yml
+[gitlab]: ../ci/malcolm-resilience.gitlab-ci.yml
+[shell]: ../scripts/resilience-gate.sh
+[budget]: ../ci/budget.toml
+
+### Wiring into a new GitHub Actions workflow
+
+```yaml
+on: [pull_request]
+permissions: { contents: read }
+jobs:
+  resilience:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bbbb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/malcolm-resilience
+        with:
+          preset: flaky_net
+          budget: ci/budget.toml
+      - uses: github/codeql-action/upload-sarif@4e828ff8d448a2aac41c8c2fa822ac847b6e9e44 # v3.29.4
+        if: always()
+        with:
+          sarif_file: malcolm.sarif
+          category: malcolm-resilience
+```
+
+### Wiring into GitLab CI
+
+```yaml
+include:
+  - local: 'ci/malcolm-resilience.gitlab-ci.yml'
+
+variables:
+  MALCOLM_PRESET: 'flaky_net'
+  MALCOLM_BUDGET: 'ci/budget.toml'
+```
+
+### Local preflight
+
+The same gate runs locally so you can iterate on a budget without
+pushing a branch:
+
+```bash
+scripts/resilience-gate.sh --preset flaky_net --budget ci/budget.toml
+echo "exit=$?"  # 0 on pass, 3 on breach, 4 on I/O error
+
+# Sanity-check the gate itself without touching your real budget:
+scripts/resilience-gate.sh --self-test
+```
+
+The integration test [`cicd_templates.rs`][tests] parses every YAML
+above and asserts the public contract (inputs, outputs, permissions,
+concurrency group, SARIF upload, junit artifact). Renaming any
+downstream-facing field is a test failure.
+
+[tests]: ../crates/malcolm/tests/cicd_templates.rs
