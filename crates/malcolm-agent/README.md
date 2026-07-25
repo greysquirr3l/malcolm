@@ -83,7 +83,7 @@ the `TargetAdapter` port, `SafetyGuard`, `Cleanup`, and `NullAdapter`
 |---------------|-----------------------------------------------|------|
 | `process`     | Process kill / signal adapter                 | T34  |
 | `cgroups`     | cgroup v2 resource-limit adapter              | T35  |
-| `netem`       | Linux `tc` qdisc adapter (latency, loss, …)   | T36  |
+| `netem`       | Linux `tc`/`netem` real network fault adapter | T36  |
 | `syscall`     | seccomp / syscall filter adapter              | T37  |
 | `kubernetes`  | pod / namespace / container adapter           | T38  |
 
@@ -183,6 +183,64 @@ before acting and returns a clear error if the caller lacks
 privilege. The integration tests skip cleanly on unprivileged
 runners via the `probe_cgroup_writable` helper.
 
+## Real network faults (feature `netem`)
+
+The netem adapter turns the in-process T07 network faults
+(`LatencySpike`, `PacketLoss`, `BandwidthThrottle`,
+`NetworkPartition`) into real Linux traffic-control impairments
+on a named interface. It shells out to the `tc` binary from
+iproute2 — no `unsafe`, no new dependency. Linux-only.
+
+### Enable
+
+```toml
+[dependencies]
+malcolm-agent = { version = "0.6", features = ["netem"] }
+```
+
+### Actions
+
+```json
+{ "kind": "latency",   "interface": "eth0", "mean_ms": 100, "jitter_ms": 20, "correlation": 25 }
+{ "kind": "loss",      "interface": "eth0", "percent": 5,  "correlation": 50 }
+{ "kind": "corrupt",   "interface": "eth0", "percent": 0.5 }
+{ "kind": "reorder",   "interface": "eth0", "percent": 2,  "correlation": 25 }
+{ "kind": "rate",      "interface": "eth0", "bps": 1000000 }
+{ "kind": "partition", "interface": "eth0" }
+```
+
+The optional `watchdog_ms` field spawns a background thread that
+reverts the impairment after the timeout — a safety net for
+wedged test processes that have not yet dropped their
+`Cleanup` registry.
+
+### Safety contract
+
+- The interface is checked against the iface allowlist via
+  `SafetyGuard::check_target(Target::Iface(iface))` before any
+  `tc` call.
+- The default-route interface is rejected by the guard unless
+  the operator has explicitly added it.
+- Parameters are validated (percentages in `[0, 100]`,
+  correlations in `[0, 100]`, NaN/Inf rejected) before any
+  shell-out. A malformed plan never reaches `tc`.
+
+### Snapshot and restore
+
+`apply` records the existing root qdisc of the interface
+before any change. `revert` removes the netem qdisc and
+replays the snapshot. The `Cleanup` registry guarantees
+revert on `Drop` and on `SIGINT`/`SIGTERM`. `revert` is
+idempotent: a missing qdisc is treated as success so a
+double-revert from a noisy cleanup does not loop.
+
+### Privilege requirements
+
+`tc` requires `CAP_NET_ADMIN`. The adapter treats absence of
+the binary or the privilege as a clean `PlatformUnsupported`
+error; the integration tests skip cleanly on unprivileged
+runners via `probe_netem_writable`.
+
 ## Example
 
 ```rust
@@ -216,3 +274,4 @@ cleanup.revert(id)?;
 - [`null.rs`](src/null.rs) — `NullAdapter`, the always-dry-run default adapter.
 - [`adapters/process.rs`](src/adapters/process.rs) — process control (kill / signal / pause / resume), feature `process`.
 - [`adapters/cgroups.rs`](src/adapters/cgroups.rs) — cgroup v2 resource limits (cpu.max / memory.max / io.max), feature `cgroups`, Linux-only.
+- [`adapters/netem.rs`](src/adapters/netem.rs) — Linux `tc`/`netem` real network fault adapter, feature `netem`, Linux-only.
