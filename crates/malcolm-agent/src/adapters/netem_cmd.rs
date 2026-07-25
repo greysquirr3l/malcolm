@@ -41,7 +41,19 @@ impl QdiscSnapshot {
     /// Returns `None` if there is no root qdisc (i.e. the kernel
     /// shows `qdisc fq_codel 0: root` by default — handled the
     /// same way as any other qdisc).
+    ///
+    /// Returns [`AgentError::PlatformUnsupported`] when `tc` is
+    /// not on `$PATH` or `--version` exits non-zero. The check
+    /// runs *before* any shell-out so the error variant is
+    /// consistent with `tc_add_qdisc` / `tc_del_qdisc`.
     pub(crate) fn capture(iface: &str) -> Result<Option<Self>, AgentError> {
+        if !tc_available() {
+            return Err(AgentError::PlatformUnsupported {
+                adapter: super::netem::NetemAdapter::KIND,
+                action: "qdisc_capture".to_owned(),
+                platform: "tc binary not available".to_owned(),
+            });
+        }
         let output = Command::new("tc")
             .args(["qdisc", "show", "dev", iface])
             .output()
@@ -68,7 +80,19 @@ impl QdiscSnapshot {
 
     /// Restore the snapshot. If no snapshot was captured (the
     /// interface had no root qdisc), we leave it untouched.
+    ///
+    /// Returns [`AgentError::PlatformUnsupported`] when `tc` is
+    /// not on `$PATH`. The check matches `capture` so callers
+    /// see the same variant regardless of which step hits a
+    /// missing binary.
     pub(crate) fn restore(&self, iface: &str) -> Result<(), AgentError> {
+        if !tc_available() {
+            return Err(AgentError::PlatformUnsupported {
+                adapter: super::netem::NetemAdapter::KIND,
+                action: "qdisc_restore".to_owned(),
+                platform: "tc binary not available".to_owned(),
+            });
+        }
         // Replay: `tc qdisc add dev <iface> root <rest>` where
         // `<rest>` is everything after the `dev <iface>` portion
         // of the snapshot. The snapshot starts with `qdisc `.
@@ -272,6 +296,81 @@ mod tests {
                 "reorder",
                 "2.00% 25%",
             ]
+        );
+    }
+
+    /// Contract: when `tc` is not available, `QdiscSnapshot::capture`
+    /// must return `PlatformUnsupported`, NOT `AdapterFailure` (which
+    /// would be returned by a raw `Command::new("tc")` IO error).
+    /// This guards against a regression where the helpers shell
+    /// out before consulting `tc_available()`.
+    ///
+    /// On hosts with `tc` installed this test asserts the
+    /// `Ok(_)` branch — the contract we want the helper to keep
+    /// is "matches `tc_available()`'s verdict".
+    #[test]
+    fn capture_returns_platform_unsupported_when_tc_missing() {
+        if tc_available() {
+            // Skip on a tc-equipped host; the unit test that
+            // exercises the missing-tc path lives in the
+            // integration suite (where we can sanitize PATH).
+            let result = QdiscSnapshot::capture("lo").expect("tc present");
+            // On a tc-equipped host the loopback almost
+            // always has a root qdisc; either Some(_) or
+            // None is fine — what we care about is the
+            // PlatformUnsupported absence.
+            assert!(
+                !matches!(result, Some(_) | None),
+                "capture returned an unexpected variant"
+            );
+        } else {
+            let err =
+                QdiscSnapshot::capture("lo").expect_err("capture must fail when tc is missing");
+            let expected_action: String = "qdisc_capture".to_owned();
+            assert!(
+                matches!(
+                    &err,
+                    AgentError::PlatformUnsupported {
+                        action,
+                        ..
+                    } if action == &expected_action
+                ),
+                "expected PlatformUnsupported{{action: {expected_action:?}}}; got {err:?}"
+            );
+        }
+    }
+
+    /// Contract: same as the capture test, but for `restore`.
+    /// `restore` is the revert-path companion to `capture`; it
+    /// must surface `PlatformUnsupported` (not `AdapterFailure`)
+    /// when `tc` is missing.
+    ///
+    /// We do NOT call `restore` on a tc-equipped host — that
+    /// path is covered by the integration suite, which can
+    /// clean up after itself. The unit-level contract is only
+    /// about the missing-tc variant.
+    #[test]
+    fn restore_returns_platform_unsupported_when_tc_missing() {
+        if tc_available() {
+            // Integration suite owns the live-path test.
+            return;
+        }
+        let snapshot = QdiscSnapshot {
+            raw: "qdisc fq_codel 0: root".to_owned(),
+        };
+        let err = snapshot
+            .restore("lo")
+            .expect_err("restore must fail when tc is missing");
+        let expected_action: String = "qdisc_restore".to_owned();
+        assert!(
+            matches!(
+                &err,
+                AgentError::PlatformUnsupported {
+                    action,
+                    ..
+                } if action == &expected_action
+            ),
+            "expected PlatformUnsupported{{action: {expected_action:?}}}; got {err:?}"
         );
     }
 }
