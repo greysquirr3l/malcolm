@@ -55,7 +55,9 @@ proptest = { workspace = true }
 default = []
 # T34 — process control (kill, signal, pause/resume) via the `nix` crate
 process = ["dep:nix"]
-# T35
+# T35 — cgroup v2 resource limits (cpu.max / memory.max / io.max). No
+# new dependency; the adapter writes the cgroup interface files
+# directly via `std::fs` to keep the dependency surface flat.
 cgroups = []
 # T36
 netem = []
