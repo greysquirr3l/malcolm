@@ -59,7 +59,10 @@ process = ["dep:nix"]
 # new dependency; the adapter writes the cgroup interface files
 # directly via `std::fs` to keep the dependency surface flat.
 cgroups = []
-# T36
+# T36 — Linux tc/netem real network fault adapter. No new
+# dependency; the adapter shells out to the `tc` binary from
+# iproute2, which is part of the host OS. Documented in the
+# adapter's README section.
 netem = []
 # T37
 syscall = []
