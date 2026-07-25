@@ -81,6 +81,7 @@
 #![warn(unreachable_pub)]
 
 pub mod adapter;
+pub mod adapters;
 pub mod cleanup;
 pub mod error;
 pub mod null;
@@ -93,4 +94,4 @@ pub use adapter::{AppliedFault, FaultPlan, TargetAdapter};
 pub use cleanup::{AppliedId, Cleanup};
 pub use error::AgentError;
 pub use null::NullAdapter;
-pub use safety::{ARM_ENV_FLAG, SafetyGuard};
+pub use safety::{ARM_ENV_FLAG, SafetyGuard, Target};
