@@ -120,10 +120,20 @@ mod tests {
         reason = "test needs to control MALCOLM_AGENT_ARM env var"
     )]
     fn unarmed_guard_makes_null_adapter_return_dry_run() {
-        // The env flag is intentionally not set.
-        // SAFETY: this test does not race with the two env-flag
-        // tests above because it does not need the flag to be set;
-        // it only asserts the default (unarmed) behaviour.
+        // The env flag is intentionally not set. Process env vars are
+        // shared across every test in this binary, so the
+        // module-level `ENV_LOCK` serialises this `remove_var`
+        // against the env-flag tests above; without it, a parallel
+        // test could clear the var between another test's
+        // `set_var` and its `arm(...)` call.
+        // SAFETY: cargo runs tests on multiple threads by default. We
+        // hold `ENV_LOCK` for the whole test, so no other test in
+        // this file can read or write the env var while we hold it.
+        let snapshot = std::env::var(ARM_ENV_FLAG).ok();
+        let _env_lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: see mutex contract above.
         unsafe {
             std::env::remove_var(ARM_ENV_FLAG);
         }
@@ -137,6 +147,16 @@ mod tests {
             .expect("null adapter apply never fails");
         assert!(applied.dry_run, "null adapter must report dry_run: true");
         assert_eq!(applied.adapter, "null");
+
+        // Restore the original env (if any) so we don't leak state
+        // into sibling tests in the same process. The lock is still
+        // held until `_env_lock` drops at the end of this scope.
+        if let Some(value) = snapshot {
+            // SAFETY: lock still held; no concurrent env-var reader.
+            unsafe {
+                std::env::set_var(ARM_ENV_FLAG, value);
+            }
+        }
     }
 
     #[test]

@@ -13,3 +13,9 @@ pub mod netem;
 mod netem_cmd;
 #[cfg(all(unix, feature = "process"))]
 pub mod process;
+// x86_64-only: the ptrace register-manipulation internals operate on
+// the x86_64 `user_regs_struct` layout (`orig_rax` / `rax`). Other
+// Linux architectures (aarch64, etc.) are a documented follow-up —
+// see `syscall/mod.rs`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64", feature = "syscall"))]
+pub mod syscall;

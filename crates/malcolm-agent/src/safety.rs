@@ -12,7 +12,7 @@
 //! 1. The environment flag `MALCOLM_AGENT_ARM=1` (so the test author
 //!    opted in at the environment level, not just at the call site).
 //! 2. The caller passed an explicit `i_understand_the_blast_radius:
-//!    true` boolean to [`arm`](Self::arm). A bare `true` is not
+//!    true` boolean to [`SafetyGuard::arm`]. A bare `true` is not
 //!    allowed — the parameter name is part of the contract.
 //!
 //! Without either, the guard reports [`AgentError::NotArmed`] and any

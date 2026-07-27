@@ -44,7 +44,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bbbb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run the malcolm-resilience composite action
         id: gate
@@ -58,7 +58,7 @@ jobs:
 
       - name: Upload JUnit test results
         if: always()
-        uses: actions/upload-artifact@50769540e7f2c8f3b6980a2772740e96d39a4e5d # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: malcolm-junit
           path: malcolm-junit.xml
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload SARIF for code-scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@4e828ff8d448a2aac41c8c2fa822ac847b6e9e44 # v3.29.4
+        uses: github/codeql-action/upload-sarif@e8e594e8799b6bc05d33c13d3d14e484b7b9cbc0 # v3.29.4
         with:
           sarif_file: malcolm.sarif
           category: malcolm-resilience
