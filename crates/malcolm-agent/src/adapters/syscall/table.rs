@@ -1,0 +1,551 @@
+//! `x86_64` Linux syscall name <-> number table, and the [`SyscallSelector`]
+//! that matches a traced syscall-entry stop against a `FaultPlan`.
+//!
+//! The table is transcribed mechanically from the kernel's authoritative
+//! `asm/unistd_64.h` (verified against a Linux `x86_64` container at
+//! implementation time) rather than hand-typed, so every entry is exact.
+//! It intentionally covers the full `x86_64` syscall table rather than a
+//! curated subset: a fault-injection tool that only recognises a handful
+//! of "obvious" syscalls forces the operator to fall back to raw numbers
+//! for anything else, which defeats the point of the name-based selector.
+
+use serde_json::Value;
+
+use crate::error::AgentError;
+
+use super::SyscallAdapter;
+
+/// Selects a syscall to intercept, either by its canonical `x86_64` name
+/// (resolved against [`BY_NAME`]) or by its raw syscall number (for
+/// syscalls newer than this table, or architecture-specific numbers the
+/// operator has already looked up).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyscallSelector {
+    /// Canonical syscall name, e.g. `"write"`, `"connect"`.
+    Name(String),
+    /// Raw `x86_64` syscall number.
+    Number(i64),
+}
+
+impl SyscallSelector {
+    /// Decode a selector from the `syscall` field of a `FaultPlan`
+    /// payload: either a JSON string (name) or a JSON number (raw
+    /// syscall number).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError::InvalidPlan`] if the field is missing or is
+    /// neither a string nor an integer.
+    pub(super) fn from_json(value: Option<&Value>) -> Result<Self, AgentError> {
+        match value {
+            Some(Value::String(name)) => Ok(Self::Name(name.clone())),
+            Some(Value::Number(n)) => {
+                let n = n.as_i64().ok_or_else(|| AgentError::InvalidPlan {
+                    adapter: SyscallAdapter::KIND,
+                    reason: "field `syscall` as a number must fit in i64".to_owned(),
+                })?;
+                Ok(Self::Number(n))
+            }
+            _ => Err(AgentError::InvalidPlan {
+                adapter: SyscallAdapter::KIND,
+                reason: "missing field `syscall` (string name or integer number)".to_owned(),
+            }),
+        }
+    }
+
+    /// Resolve this selector to a raw `x86_64` syscall number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError::InvalidPlan`] if a [`Self::Name`] selector
+    /// does not match any entry in [`BY_NAME`].
+    pub(super) fn resolve(&self) -> Result<i64, AgentError> {
+        match self {
+            Self::Number(n) => Ok(*n),
+            Self::Name(name) => BY_NAME
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, nr)| *nr)
+                .ok_or_else(|| AgentError::InvalidPlan {
+                    adapter: SyscallAdapter::KIND,
+                    reason: format!(
+                        "unknown x86_64 syscall name `{name}`; use the raw syscall number instead"
+                    ),
+                }),
+        }
+    }
+
+    /// Human-readable label for tracing events and `AppliedFault`
+    /// descriptions, e.g. `"write(1)"`. Falls back to the bare number
+    /// when it has no name in [`BY_NAME`] (newer syscalls this table
+    /// predates).
+    pub(super) fn label(&self) -> String {
+        match self {
+            Self::Name(name) => BY_NAME
+                .iter()
+                .find(|(n, _)| n == name)
+                .map_or_else(|| name.clone(), |(n, nr)| format!("{n}({nr})")),
+            Self::Number(nr) => BY_NAME
+                .iter()
+                .find(|(_, n)| n == nr)
+                .map_or_else(|| nr.to_string(), |(name, _)| format!("{name}({nr})")),
+        }
+    }
+}
+
+/// `(name, number)` for every `x86_64` syscall, sourced from
+/// `asm/unistd_64.h`. Numbers are stable ABI and never renumbered by the
+/// kernel; gaps are syscalls that were removed or never implemented on
+/// this architecture.
+#[rustfmt::skip]
+pub(super) const BY_NAME: &[(&str, i64)] = &[
+    ("read", 0),
+    ("write", 1),
+    ("open", 2),
+    ("close", 3),
+    ("stat", 4),
+    ("fstat", 5),
+    ("lstat", 6),
+    ("poll", 7),
+    ("lseek", 8),
+    ("mmap", 9),
+    ("mprotect", 10),
+    ("munmap", 11),
+    ("brk", 12),
+    ("rt_sigaction", 13),
+    ("rt_sigprocmask", 14),
+    ("rt_sigreturn", 15),
+    ("ioctl", 16),
+    ("pread64", 17),
+    ("pwrite64", 18),
+    ("readv", 19),
+    ("writev", 20),
+    ("access", 21),
+    ("pipe", 22),
+    ("select", 23),
+    ("sched_yield", 24),
+    ("mremap", 25),
+    ("msync", 26),
+    ("mincore", 27),
+    ("madvise", 28),
+    ("shmget", 29),
+    ("shmat", 30),
+    ("shmctl", 31),
+    ("dup", 32),
+    ("dup2", 33),
+    ("pause", 34),
+    ("nanosleep", 35),
+    ("getitimer", 36),
+    ("alarm", 37),
+    ("setitimer", 38),
+    ("getpid", 39),
+    ("sendfile", 40),
+    ("socket", 41),
+    ("connect", 42),
+    ("accept", 43),
+    ("sendto", 44),
+    ("recvfrom", 45),
+    ("sendmsg", 46),
+    ("recvmsg", 47),
+    ("shutdown", 48),
+    ("bind", 49),
+    ("listen", 50),
+    ("getsockname", 51),
+    ("getpeername", 52),
+    ("socketpair", 53),
+    ("setsockopt", 54),
+    ("getsockopt", 55),
+    ("clone", 56),
+    ("fork", 57),
+    ("vfork", 58),
+    ("execve", 59),
+    ("exit", 60),
+    ("wait4", 61),
+    ("kill", 62),
+    ("uname", 63),
+    ("semget", 64),
+    ("semop", 65),
+    ("semctl", 66),
+    ("shmdt", 67),
+    ("msgget", 68),
+    ("msgsnd", 69),
+    ("msgrcv", 70),
+    ("msgctl", 71),
+    ("fcntl", 72),
+    ("flock", 73),
+    ("fsync", 74),
+    ("fdatasync", 75),
+    ("truncate", 76),
+    ("ftruncate", 77),
+    ("getdents", 78),
+    ("getcwd", 79),
+    ("chdir", 80),
+    ("fchdir", 81),
+    ("rename", 82),
+    ("mkdir", 83),
+    ("rmdir", 84),
+    ("creat", 85),
+    ("link", 86),
+    ("unlink", 87),
+    ("symlink", 88),
+    ("readlink", 89),
+    ("chmod", 90),
+    ("fchmod", 91),
+    ("chown", 92),
+    ("fchown", 93),
+    ("lchown", 94),
+    ("umask", 95),
+    ("gettimeofday", 96),
+    ("getrlimit", 97),
+    ("getrusage", 98),
+    ("sysinfo", 99),
+    ("times", 100),
+    ("ptrace", 101),
+    ("getuid", 102),
+    ("syslog", 103),
+    ("getgid", 104),
+    ("setuid", 105),
+    ("setgid", 106),
+    ("geteuid", 107),
+    ("getegid", 108),
+    ("setpgid", 109),
+    ("getppid", 110),
+    ("getpgrp", 111),
+    ("setsid", 112),
+    ("setreuid", 113),
+    ("setregid", 114),
+    ("getgroups", 115),
+    ("setgroups", 116),
+    ("setresuid", 117),
+    ("getresuid", 118),
+    ("setresgid", 119),
+    ("getresgid", 120),
+    ("getpgid", 121),
+    ("setfsuid", 122),
+    ("setfsgid", 123),
+    ("getsid", 124),
+    ("capget", 125),
+    ("capset", 126),
+    ("rt_sigpending", 127),
+    ("rt_sigtimedwait", 128),
+    ("rt_sigqueueinfo", 129),
+    ("rt_sigsuspend", 130),
+    ("sigaltstack", 131),
+    ("utime", 132),
+    ("mknod", 133),
+    ("uselib", 134),
+    ("personality", 135),
+    ("ustat", 136),
+    ("statfs", 137),
+    ("fstatfs", 138),
+    ("sysfs", 139),
+    ("getpriority", 140),
+    ("setpriority", 141),
+    ("sched_setparam", 142),
+    ("sched_getparam", 143),
+    ("sched_setscheduler", 144),
+    ("sched_getscheduler", 145),
+    ("sched_get_priority_max", 146),
+    ("sched_get_priority_min", 147),
+    ("sched_rr_get_interval", 148),
+    ("mlock", 149),
+    ("munlock", 150),
+    ("mlockall", 151),
+    ("munlockall", 152),
+    ("vhangup", 153),
+    ("modify_ldt", 154),
+    ("pivot_root", 155),
+    ("_sysctl", 156),
+    ("prctl", 157),
+    ("arch_prctl", 158),
+    ("adjtimex", 159),
+    ("setrlimit", 160),
+    ("chroot", 161),
+    ("sync", 162),
+    ("acct", 163),
+    ("settimeofday", 164),
+    ("mount", 165),
+    ("umount2", 166),
+    ("swapon", 167),
+    ("swapoff", 168),
+    ("reboot", 169),
+    ("sethostname", 170),
+    ("setdomainname", 171),
+    ("iopl", 172),
+    ("ioperm", 173),
+    ("create_module", 174),
+    ("init_module", 175),
+    ("delete_module", 176),
+    ("get_kernel_syms", 177),
+    ("query_module", 178),
+    ("quotactl", 179),
+    ("nfsservctl", 180),
+    ("getpmsg", 181),
+    ("putpmsg", 182),
+    ("afs_syscall", 183),
+    ("tuxcall", 184),
+    ("security", 185),
+    ("gettid", 186),
+    ("readahead", 187),
+    ("setxattr", 188),
+    ("lsetxattr", 189),
+    ("fsetxattr", 190),
+    ("getxattr", 191),
+    ("lgetxattr", 192),
+    ("fgetxattr", 193),
+    ("listxattr", 194),
+    ("llistxattr", 195),
+    ("flistxattr", 196),
+    ("removexattr", 197),
+    ("lremovexattr", 198),
+    ("fremovexattr", 199),
+    ("tkill", 200),
+    ("time", 201),
+    ("futex", 202),
+    ("sched_setaffinity", 203),
+    ("sched_getaffinity", 204),
+    ("set_thread_area", 205),
+    ("io_setup", 206),
+    ("io_destroy", 207),
+    ("io_getevents", 208),
+    ("io_submit", 209),
+    ("io_cancel", 210),
+    ("get_thread_area", 211),
+    ("lookup_dcookie", 212),
+    ("epoll_create", 213),
+    ("epoll_ctl_old", 214),
+    ("epoll_wait_old", 215),
+    ("remap_file_pages", 216),
+    ("getdents64", 217),
+    ("set_tid_address", 218),
+    ("restart_syscall", 219),
+    ("semtimedop", 220),
+    ("fadvise64", 221),
+    ("timer_create", 222),
+    ("timer_settime", 223),
+    ("timer_gettime", 224),
+    ("timer_getoverrun", 225),
+    ("timer_delete", 226),
+    ("clock_settime", 227),
+    ("clock_gettime", 228),
+    ("clock_getres", 229),
+    ("clock_nanosleep", 230),
+    ("exit_group", 231),
+    ("epoll_wait", 232),
+    ("epoll_ctl", 233),
+    ("tgkill", 234),
+    ("utimes", 235),
+    ("vserver", 236),
+    ("mbind", 237),
+    ("set_mempolicy", 238),
+    ("get_mempolicy", 239),
+    ("mq_open", 240),
+    ("mq_unlink", 241),
+    ("mq_timedsend", 242),
+    ("mq_timedreceive", 243),
+    ("mq_notify", 244),
+    ("mq_getsetattr", 245),
+    ("kexec_load", 246),
+    ("waitid", 247),
+    ("add_key", 248),
+    ("request_key", 249),
+    ("keyctl", 250),
+    ("ioprio_set", 251),
+    ("ioprio_get", 252),
+    ("inotify_init", 253),
+    ("inotify_add_watch", 254),
+    ("inotify_rm_watch", 255),
+    ("migrate_pages", 256),
+    ("openat", 257),
+    ("mkdirat", 258),
+    ("mknodat", 259),
+    ("fchownat", 260),
+    ("futimesat", 261),
+    ("newfstatat", 262),
+    ("unlinkat", 263),
+    ("renameat", 264),
+    ("linkat", 265),
+    ("symlinkat", 266),
+    ("readlinkat", 267),
+    ("fchmodat", 268),
+    ("faccessat", 269),
+    ("pselect6", 270),
+    ("ppoll", 271),
+    ("unshare", 272),
+    ("set_robust_list", 273),
+    ("get_robust_list", 274),
+    ("splice", 275),
+    ("tee", 276),
+    ("sync_file_range", 277),
+    ("vmsplice", 278),
+    ("move_pages", 279),
+    ("utimensat", 280),
+    ("epoll_pwait", 281),
+    ("signalfd", 282),
+    ("timerfd_create", 283),
+    ("eventfd", 284),
+    ("fallocate", 285),
+    ("timerfd_settime", 286),
+    ("timerfd_gettime", 287),
+    ("accept4", 288),
+    ("signalfd4", 289),
+    ("eventfd2", 290),
+    ("epoll_create1", 291),
+    ("dup3", 292),
+    ("pipe2", 293),
+    ("inotify_init1", 294),
+    ("preadv", 295),
+    ("pwritev", 296),
+    ("rt_tgsigqueueinfo", 297),
+    ("perf_event_open", 298),
+    ("recvmmsg", 299),
+    ("fanotify_init", 300),
+    ("fanotify_mark", 301),
+    ("prlimit64", 302),
+    ("name_to_handle_at", 303),
+    ("open_by_handle_at", 304),
+    ("clock_adjtime", 305),
+    ("syncfs", 306),
+    ("sendmmsg", 307),
+    ("setns", 308),
+    ("getcpu", 309),
+    ("process_vm_readv", 310),
+    ("process_vm_writev", 311),
+    ("kcmp", 312),
+    ("finit_module", 313),
+    ("sched_setattr", 314),
+    ("sched_getattr", 315),
+    ("renameat2", 316),
+    ("seccomp", 317),
+    ("getrandom", 318),
+    ("memfd_create", 319),
+    ("kexec_file_load", 320),
+    ("bpf", 321),
+    ("execveat", 322),
+    ("userfaultfd", 323),
+    ("membarrier", 324),
+    ("mlock2", 325),
+    ("copy_file_range", 326),
+    ("preadv2", 327),
+    ("pwritev2", 328),
+    ("pkey_mprotect", 329),
+    ("pkey_alloc", 330),
+    ("pkey_free", 331),
+    ("statx", 332),
+    ("io_pgetevents", 333),
+    ("rseq", 334),
+    ("pidfd_send_signal", 424),
+    ("io_uring_setup", 425),
+    ("io_uring_enter", 426),
+    ("io_uring_register", 427),
+    ("open_tree", 428),
+    ("move_mount", 429),
+    ("fsopen", 430),
+    ("fsconfig", 431),
+    ("fsmount", 432),
+    ("fspick", 433),
+    ("pidfd_open", 434),
+    ("clone3", 435),
+    ("close_range", 436),
+    ("openat2", 437),
+    ("pidfd_getfd", 438),
+    ("faccessat2", 439),
+    ("process_madvise", 440),
+    ("epoll_pwait2", 441),
+    ("mount_setattr", 442),
+    ("quotactl_fd", 443),
+    ("landlock_create_ruleset", 444),
+    ("landlock_add_rule", 445),
+    ("landlock_restrict_self", 446),
+    ("memfd_secret", 447),
+    ("process_mrelease", 448),
+    ("futex_waitv", 449),
+    ("set_mempolicy_home_node", 450),
+    ("cachestat", 451),
+    ("fchmodat2", 452),
+    ("map_shadow_stack", 453),
+    ("futex_wake", 454),
+    ("futex_wait", 455),
+    ("futex_requeue", 456),
+    ("statmount", 457),
+    ("listmount", 458),
+    ("lsm_get_self_attr", 459),
+    ("lsm_set_self_attr", 460),
+    ("lsm_list_modules", 461),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_well_known_names() {
+        assert_eq!(
+            SyscallSelector::Name("read".to_owned()).resolve().unwrap(),
+            0
+        );
+        assert_eq!(
+            SyscallSelector::Name("write".to_owned()).resolve().unwrap(),
+            1
+        );
+        assert_eq!(
+            SyscallSelector::Name("connect".to_owned())
+                .resolve()
+                .unwrap(),
+            42
+        );
+        assert_eq!(
+            SyscallSelector::Name("openat".to_owned())
+                .resolve()
+                .unwrap(),
+            257
+        );
+    }
+
+    #[test]
+    fn unknown_name_is_invalid_plan() {
+        let err = SyscallSelector::Name("not_a_real_syscall".to_owned())
+            .resolve()
+            .expect_err("unknown name must not resolve");
+        assert!(matches!(err, AgentError::InvalidPlan { .. }));
+    }
+
+    #[test]
+    fn raw_number_resolves_to_itself() {
+        assert_eq!(SyscallSelector::Number(1).resolve().unwrap(), 1);
+        // Not in the table but still a valid raw number.
+        assert_eq!(SyscallSelector::Number(9999).resolve().unwrap(), 9999);
+    }
+
+    #[test]
+    fn table_has_no_duplicate_names_or_numbers() {
+        let mut names: Vec<&str> = BY_NAME.iter().map(|(n, _)| *n).collect();
+        let mut numbers: Vec<i64> = BY_NAME.iter().map(|(_, n)| *n).collect();
+        names.sort_unstable();
+        numbers.sort_unstable();
+        let mut dedup_names = names.clone();
+        dedup_names.dedup();
+        let mut dedup_numbers = numbers.clone();
+        dedup_numbers.dedup();
+        assert_eq!(
+            names.len(),
+            dedup_names.len(),
+            "duplicate syscall name in table"
+        );
+        assert_eq!(
+            numbers.len(),
+            dedup_numbers.len(),
+            "duplicate syscall number in table"
+        );
+    }
+
+    #[test]
+    fn label_prefers_name_when_known() {
+        assert_eq!(SyscallSelector::Number(1).label(), "write(1)");
+        assert_eq!(
+            SyscallSelector::Name("write".to_owned()).label(),
+            "write(1)"
+        );
+        assert_eq!(SyscallSelector::Number(999_999).label(), "999999");
+    }
+}

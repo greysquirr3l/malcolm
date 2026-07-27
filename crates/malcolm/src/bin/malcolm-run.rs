@@ -82,6 +82,10 @@ EXIT CODES:
     4  i/o error
 ";
 
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "CLI flag struct: each bool is an independent `--flag` switch from `Args::parse`; refactoring to a state machine would obscure the parser-to-arg mapping for no behavioural gain"
+)]
 struct Args {
     list_presets: bool,
     help: bool,

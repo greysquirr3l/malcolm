@@ -1242,6 +1242,7 @@ dependencies = [
  "malcolm-core",
  "nix",
  "proptest",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "signal-hook",

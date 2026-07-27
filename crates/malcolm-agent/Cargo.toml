@@ -40,10 +40,18 @@ serde = { workspace = true }
 serde_json = "1"
 signal-hook = "0.4"
 # Real-world adapters are optional. `nix` is the safe-Rust wrapper
-# over the `kill(2)`, `wait(2)`, and signal syscalls the process
-# adapter needs. The `process` feature turns the dependency on; the
-# default build of `malcolm-agent` is the in-process port only.
-nix = { version = "0.29", features = ["signal", "process"], optional = true }
+# over the `kill(2)`, `wait(2)`, `ptrace(2)`, and signal syscalls
+# the process and syscall adapters need. The feature set below is
+# the union of what the `process` and `syscall` adapters use; the
+# dependency is gated behind either feature, so the default
+# build of `malcolm-agent` is the in-process port only.
+nix = { version = "0.29", features = ["signal", "process", "ptrace"], optional = true }
+# T37's probability-driven fault injection needs a seeded RNG so a fixed
+# seed reproduces the same inject/skip sequence across runs. Pinned to
+# "0.10" (not the workspace's "0.9") to match `malcolm` and
+# `malcolm-core`, which malcolm-agent already depends on directly —
+# avoids pulling two incompatible rand majors into one dependency graph.
+rand = { version = "0.10", optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
@@ -55,6 +63,11 @@ proptest = { workspace = true }
 default = []
 # T34 — process control (kill, signal, pause/resume) via the `nix` crate
 process = ["dep:nix"]
+# The `process` and `syscall` features share the same `nix`
+# dep. Both features must be able to coexist so `process` and
+# `syscall` together don't pull `nix` twice. Unifying them under
+# a single optional dep avoids the duplicate-feature conflict
+# cargo would otherwise emit.
 # T35 — cgroup v2 resource limits (cpu.max / memory.max / io.max). No
 # new dependency; the adapter writes the cgroup interface files
 # directly via `std::fs` to keep the dependency surface flat.
@@ -64,7 +77,12 @@ cgroups = []
 # iproute2, which is part of the host OS. Documented in the
 # adapter's README section.
 netem = []
-# T37
-syscall = []
+# T37 — syscall interception via ptrace (preferred spawn-under-
+# supervision) and seccomp user-notification (documented follow-up in
+# the adapter's module docs and README — see "Seccomp-unotify
+# follow-up" in adapters/syscall/ptrace.rs). Ptrace backend needs nix's
+# `ptrace` and `process` features; `rand` drives the seeded,
+# reproducible probability sampling for partial-injection plans.
+syscall = ["dep:nix", "dep:rand"]
 # T38
 kubernetes = []

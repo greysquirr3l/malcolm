@@ -1,7 +1,7 @@
 //! Resilience-budget assertion engine for chaos runs.
 //!
 //! A [`ResilienceBudget`] is a collection of pass/fail thresholds evaluated
-//! against a [`ScenarioReport`](crate::scenario::ScenarioReport). The
+//! against a [`ScenarioReport`]. The
 //! assertion engine is **panic-free** and **accumulates** every violation
 //! rather than short-circuiting on the first failure so operators see every
 //! breach in a single run.

@@ -29,7 +29,7 @@ use crate::error::AgentError;
 
 /// Identifier the registry hands out to adapters for tracking the
 /// revert path. The id is also the lookup key for
-/// [`Cleanup::registered`].
+/// [`Cleanup::revert`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AppliedId(pub u64);
 

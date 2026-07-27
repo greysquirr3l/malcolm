@@ -1,2 +1,21 @@
 [toolchain]
+# Canonical toolchain pin for the workspace. CI parses this file in every
+# job (see .github/workflows/ci.yml) so the dtolnay action installs the
+# exact version every contributor uses. The MSRV floor advertised in
+# `Cargo.toml` (rust-version = "1.85") is intentionally lower than the
+# pin — consumers may use a newer stable than 1.96.0 if they want.
 channel = "1.96.0"
+# `clippy` + `rustfmt` are required by `cargo l` / `cargo fmt` aliases in
+# .cargo/config.toml and the format-check CI job. `rust-src` is required
+# by rust-analyzer for "Expand macro" and go-to-def into std / proc-macro
+# bodies; without it the LSP runs in a degraded mode.
+components = ["clippy", "rustfmt", "rust-src"]
+# `default` is the standard Rust install profile: cargo, rustc,
+# rust-std, rust-docs, rustfmt, and clippy. We pick it over `minimal`
+# so `rust-docs` is available for `cargo doc --open` and any local
+# rust-analyzer "show documentation" hover; `rust-src` is added
+# explicitly in `components` above because it isn't part of
+# `default`. The two `rustup component add` lines in ci.yml stay as
+# defensive workarounds for the dtolnay-action recursion bug
+# ("cargo-fmt is not installed" after install).
+profile = "default"
