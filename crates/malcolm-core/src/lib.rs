@@ -19,6 +19,7 @@ extern crate alloc;
 
 pub mod bifurcation;
 pub mod distributions;
+pub mod inference;
 pub mod lyapunov;
 pub mod noise;
 pub mod types;

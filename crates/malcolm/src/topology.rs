@@ -37,6 +37,7 @@ use rand::SeedableRng as _;
 use rand::rngs::SmallRng;
 use serde::{Deserialize, Serialize};
 
+use malcolm_core::inference::{BlastRadiusResult, Clamp, FailureGraph, MarginalResult};
 use malcolm_core::types::{DryRunReport, FaultResult};
 
 use crate::fault::{Fault, FaultContext};
@@ -132,6 +133,22 @@ impl Topology {
                 .then_with(|| a.2.total_cmp(&b.2))
         });
         all
+    }
+
+    /// Build a `FailureGraph` from this topology. Every edge
+    /// becomes a probabilistic edge with the same propagation
+    /// weight; every node becomes a `FailureGraph` node. The
+    /// returned graph has no leak probabilities (zero by
+    /// default) — add them via
+    /// [`FailureGraph::set_leak`] if your scenario has
+    /// spontaneous failures.
+    #[must_use]
+    pub fn to_failure_graph(&self) -> FailureGraph {
+        let mut g = FailureGraph::new();
+        for (from, to, w) in self.edges() {
+            g.add_edge(from, to, w);
+        }
+        g
     }
 
     /// Render this topology as a [Graphviz DOT](https://graphviz.org/doc/info/lang.html)
@@ -429,7 +446,158 @@ impl Fault for CascadeFault {
     }
 }
 
+/// Bayesian cascade: the **analytic companion** to [`CascadeFault`].
+///
+/// [`CascadeFault`] samples one forward Plinko bounce per call. This
+/// type instead computes the *distribution* of outcomes analytically
+/// from the same graph — marginal failure probabilities per node and
+/// the blast-radius distribution — without running many cascades.
+///
+/// # Usage
+///
+/// Construct a [`BayesianCascade`] from a [`Topology`], then call
+/// [`BayesianCascade::analyse`] with a set of origin nodes clamped
+/// to "failed" to get the per-node failure marginals and the
+/// blast-radius distribution. The result is a `tracing` event
+/// (`fault_type = "bayesian_cascade"`) plus the raw numbers, suitable
+/// for a chaos experiment's pre-flight estimate or a post-mortem
+/// blast-radius report.
+///
+/// # Determinism
+///
+/// Exact paths (DAGs) are deterministic. Monte Carlo fallbacks
+/// (general graphs) take an explicit `sample_count` and `seed` so
+/// the result is replayable. There is no unseeded RNG anywhere in
+/// the call path.
+///
+/// # Where the math lives
+///
+/// All the inference math — noisy-OR marginals, cycle detection,
+/// exact-DP blast-radius, loopy-BP fallback — is in
+/// `malcolm_core::inference`. This type is the thin
+/// `Topology` ↔ `FailureGraph` adapter plus the tracing event.
+pub struct BayesianCascade {
+    graph: FailureGraph,
+}
+
+impl BayesianCascade {
+    /// Adapter kind for tracing events and any future
+    /// `Fault`-like trait integration.
+    pub const KIND: &'static str = "bayesian_cascade";
+
+    /// Build a Bayesian cascade from an existing [`Topology`].
+    /// The mapping is direct: every edge in the topology becomes
+    /// an edge in the failure graph with the same propagation
+    /// weight.
+    #[must_use]
+    pub fn from_topology(topology: &Topology) -> Self {
+        Self {
+            graph: topology.to_failure_graph(),
+        }
+    }
+
+    /// Build a Bayesian cascade from an existing [`FailureGraph`]
+    /// directly. Useful for tests and for callers who want to
+    /// inject leak probabilities or non-topology sources.
+    #[must_use]
+    pub fn from_graph(graph: FailureGraph) -> Self {
+        Self { graph }
+    }
+
+    /// Borrow the underlying failure graph.
+    #[must_use]
+    pub fn graph(&self) -> &FailureGraph {
+        &self.graph
+    }
+
+    /// Run the inference engine: compute per-node failure
+    /// marginals and the blast-radius distribution for the given
+    /// origin clamp. Emits a `tracing` event
+    /// (`fault_type = "bayesian_cascade"`) with the summary
+    /// numbers, then returns the raw marginals and blast-radius
+    /// result for further inspection.
+    #[must_use]
+    pub fn analyse(&self, origins: &Clamp, sample_count: usize, seed: u64) -> BayesianReport {
+        let marginals = self.graph.marginals(origins);
+        let blast_radius = self.graph.blast_radius(origins, sample_count, seed);
+
+        // Per-node marginals as a `BTreeMap<String, f64>` (in
+        // sorted node order for determinism). Keys are owned
+        // `String`s so the map can be moved out of `&self`.
+        let per_node: std::collections::BTreeMap<String, f64> = self
+            .graph
+            .nodes()
+            .iter()
+            .map(|n| (n.clone(), marginals.get(n)))
+            .collect();
+
+        // Emit the tracing event. This is the standard
+        // `tracing::info!` shape used elsewhere in this crate
+        // (T14 schema).
+        tracing::info!(
+            target: "malcolm",
+            fault_type = Self::KIND,
+            node_count = self.graph.node_count(),
+            is_exact_marginals = marginals.is_exact(),
+            is_exact_blast_radius = blast_radius.is_exact(),
+            expected_failures = blast_radius.expected(),
+            mode_failures = blast_radius.mode(),
+            "bayesian cascade analysis",
+        );
+
+        BayesianReport {
+            marginals,
+            blast_radius,
+            per_node,
+        }
+    }
+}
+
+/// The result of a [`BayesianCascade::analyse`] call: the raw
+/// marginals, the blast-radius distribution, and a per-node
+/// summary for ergonomic access.
+#[derive(Debug, Clone)]
+pub struct BayesianReport {
+    /// The marginal probabilities (exact or approximate,
+    /// depending on the graph structure). Use
+    /// [`BayesianReport::is_exact`] to check.
+    pub marginals: MarginalResult,
+    /// The blast-radius distribution. Use
+    /// [`BayesianReport::is_exact_blast_radius`] to check.
+    pub blast_radius: BlastRadiusResult,
+    /// Per-node failure probabilities, indexed by node id. The
+    /// underlying map is sorted for determinism. This is a
+    /// convenience view over `marginals.map()`; both stay in
+    /// sync.
+    pub per_node: std::collections::BTreeMap<String, f64>,
+}
+
+impl BayesianReport {
+    /// True if the marginals were computed exactly (DAG fast path).
+    #[must_use]
+    pub fn is_exact(&self) -> bool {
+        self.marginals.is_exact()
+    }
+
+    /// True if the blast-radius distribution was computed exactly.
+    #[must_use]
+    pub fn is_exact_blast_radius(&self) -> bool {
+        self.blast_radius.is_exact()
+    }
+
+    /// Per-node failure probability, or `0.0` if the node is
+    /// unknown to the graph.
+    #[must_use]
+    pub fn node_marginal(&self, node: &str) -> f64 {
+        self.marginals.get(node)
+    }
+}
+
 #[cfg(test)]
+#[allow(
+    clippy::float_cmp,
+    reason = "test assertions on exact computed probabilities"
+)]
 mod tests {
     use tracing_test::traced_test;
 
@@ -673,5 +841,94 @@ mod tests {
         // Hyphens and dots must be replaced with underscores.
         assert!(mermaid.contains("a_b"));
         assert!(mermaid.contains("c_d"));
+    }
+
+    #[test]
+    fn bayesian_cascade_from_topology_computes_marginals() {
+        // Chain A -> B -> C, weights 1.0, 1.0; A clamped to
+        // failed. All three nodes should fail with probability 1.
+        let topology = Topology::builder()
+            .name("chain")
+            .add_edge("A", "B", 1.0)
+            .add_edge("B", "C", 1.0)
+            .build();
+        let cascade = BayesianCascade::from_topology(&topology);
+        let mut origins = Clamp::new();
+        origins.insert("A".to_owned(), 1.0);
+        let report = cascade.analyse(&origins, 1_000, 42);
+        assert!(report.is_exact(), "chain is a DAG; expect exact");
+        assert_eq!(report.node_marginal("A"), 1.0);
+        assert_eq!(report.node_marginal("B"), 1.0);
+        assert_eq!(report.node_marginal("C"), 1.0);
+        // Blast-radius: exactly 3 nodes failed with probability 1.
+        assert!(report.is_exact_blast_radius());
+        assert_eq!(report.blast_radius.p_exactly(3), 1.0);
+        assert_eq!(report.blast_radius.p_exactly(0), 0.0);
+    }
+
+    #[test]
+    fn bayesian_cascade_noisy_or_two_parents() {
+        // Two parents at weight 0.5; child should be 0.75.
+        let topology = Topology::builder()
+            .name("diamond")
+            .add_edge("A", "C", 0.5)
+            .add_edge("B", "C", 0.5)
+            .build();
+        let cascade = BayesianCascade::from_topology(&topology);
+        let mut origins = Clamp::new();
+        origins.insert("A".to_owned(), 1.0);
+        origins.insert("B".to_owned(), 1.0);
+        let report = cascade.analyse(&origins, 100, 0);
+        assert!(report.is_exact(), "noisy-OR on a tree is exact");
+        assert!(
+            (report.node_marginal("C") - 0.75).abs() < 1e-12,
+            "expected P(C) = 0.75, got {}",
+            report.node_marginal("C")
+        );
+    }
+
+    #[test]
+    fn bayesian_cascade_monte_carlo_for_general_graph() {
+        // Diamond A -> B, A -> C, B -> D, C -> D. In-degree of
+        // D is 2, so the exact-DP path is skipped. Monte Carlo
+        // is used.
+        let topology = Topology::builder()
+            .name("diamond")
+            .add_edge("A", "B", 0.5)
+            .add_edge("A", "C", 0.5)
+            .add_edge("B", "D", 0.5)
+            .add_edge("C", "D", 0.5)
+            .build();
+        let cascade = BayesianCascade::from_topology(&topology);
+        let mut origins = Clamp::new();
+        origins.insert("A".to_owned(), 1.0);
+        let report = cascade.analyse(&origins, 5_000, 42);
+        assert!(!report.is_exact_blast_radius());
+        // Sum of marginals: 1 + 0.5 + 0.5 + 0.4375 = 2.4375.
+        let expected = report.blast_radius.expected();
+        assert!(
+            (expected - 2.4375).abs() < 1e-9,
+            "expected 2.4375, got {expected}"
+        );
+        // Distribution sums to ~1.
+        let sum: f64 = report.blast_radius.distribution().iter().sum();
+        assert!((sum - 1.0).abs() < 1e-9, "distribution sum = {sum}");
+    }
+
+    #[test]
+    fn bayesian_cascade_determinism_same_seed_same_result() {
+        let topology = Topology::builder()
+            .name("chain")
+            .add_edge("A", "B", 0.3)
+            .add_edge("B", "C", 0.7)
+            .build();
+        let cascade1 = BayesianCascade::from_topology(&topology);
+        let cascade2 = BayesianCascade::from_topology(&topology);
+        let r1 = cascade1.analyse(&Clamp::new(), 1_000, 42);
+        let r2 = cascade2.analyse(&Clamp::new(), 1_000, 42);
+        assert_eq!(
+            r1.blast_radius.distribution(),
+            r2.blast_radius.distribution()
+        );
     }
 }
