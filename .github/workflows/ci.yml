@@ -48,7 +48,7 @@ jobs:
         run: rustup component add clippy --toolchain ${{ steps.toolchain.outputs.version }}
 
       - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Build workspace
         run: cargo build --workspace --all-targets
@@ -104,7 +104,7 @@ jobs:
         run: rustup component add rustfmt --toolchain ${{ steps.toolchain.outputs.version }}
 
       - name: Cache cargo registry
-        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -142,7 +142,7 @@ jobs:
         run: rustup target add thumbv7m-none-eabi
 
       - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Build malcolm-core without std
         run: cargo build -p malcolm-core --target thumbv7m-none-eabi --no-default-features
@@ -159,7 +159,7 @@ jobs:
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Build rustdoc with -D warnings
         env:
