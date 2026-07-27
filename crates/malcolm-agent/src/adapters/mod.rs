@@ -7,6 +7,10 @@
 
 #[cfg(all(target_os = "linux", feature = "cgroups"))]
 pub mod cgroups;
+#[cfg(feature = "docker")]
+pub mod docker;
+#[cfg(feature = "kubernetes")]
+pub mod kubernetes;
 #[cfg(all(target_os = "linux", feature = "netem"))]
 pub mod netem;
 #[cfg(all(target_os = "linux", feature = "netem"))]
