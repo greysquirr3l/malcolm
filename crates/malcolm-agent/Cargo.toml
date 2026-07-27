@@ -52,6 +52,33 @@ nix = { version = "0.29", features = ["signal", "process", "ptrace"], optional =
 # `malcolm-core`, which malcolm-agent already depends on directly —
 # avoids pulling two incompatible rand majors into one dependency graph.
 rand = { version = "0.10", optional = true }
+# T38 — Docker adapter uses `bollard` (pure-Rust Docker daemon client).
+# Pinned to the latest 0.x line; bollard is a single-crate dependency
+# surface (no transitive gRPC stack) and works against the local Unix
+# socket out of the box, respecting `$DOCKER_HOST` for remote daemons.
+# `bollard` is async; we run its futures through a dedicated
+# `tokio::runtime::Runtime` so the `TargetAdapter` trait can stay
+# sync (the rest of the crate is sync — adding `async` to the trait
+# would ripple through `Cleanup`, the test harness, and the
+# evaluator). Tokio's `rt` + `macros` features are sufficient; we do
+# not enable `time` (no sleeps in the adapter itself).
+bollard = { version = "0.18", optional = true, default-features = false }
+tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
+# T38 — Kubernetes adapter: skeleton-only on the dev branch.
+# The adapter defines a `KubeClient` trait (see
+# `crates/malcolm-agent/src/adapters/kubernetes.rs`) and the safety /
+# allowlist / blast-radius / dry-run logic is wired against that
+# trait. The real `kube::Client`-backed implementation is a tracked
+# follow-up (see the "K8s real client" note in
+# `adapters/kubernetes.rs` and the Accumulated Learnings entry) — a
+# real K8s cluster is required for full runtime verification, and
+# pulling the `kube` + `k8s-openapi` + `tonic` gRPC stack into the
+# default feature set is not worth the dependency weight for a
+# skeleton. The trait design means the mutation methods are mockable
+# today and swappable for a real client later without touching the
+# safety / dry-run / blast-radius logic.
+# (No optional dep declared for the skeleton — the trait surface is
+# all the adapter needs.)
 
 [dev-dependencies]
 proptest = { workspace = true }
@@ -84,5 +111,22 @@ netem = []
 # `ptrace` and `process` features; `rand` drives the seeded,
 # reproducible probability sampling for partial-injection plans.
 syscall = ["dep:nix", "dep:rand"]
-# T38
+# T38 — Docker adapter: container pause/unpause/kill/stop/restart via
+# `bollard`, plus in-container routing of the T35 cgroup / T36 netem
+# adapters when those features are also enabled (gated at the call
+# site). The `bollard` dep is the only new requirement; the runtime
+# surface is a single optional crate to keep the default build lean.
+docker = ["dep:bollard", "dep:tokio"]
+# T38 — Kubernetes adapter: pod delete/evict and label-selector
+# fan-out via `kube`, with the runtime feature (which includes
+# tokio by default; the adapter uses `kube::Client::try_default`
+# for ambient kubeconfig / in-cluster config). `k8s-openapi`
+# types are pulled in lazily when the mutation path is implemented
+# — for the skeleton we only need the trait surface and string-
+# based resource identification. Skeleton-only on the dev branch:
+# the trait, allowlist, blast-radius cap, and dry-run listing are
+# wired up, but actual mutations are stubbed behind `not yet
+# implemented` returns — a real K8s cluster is required for full
+# runtime verification, mirroring the T37 Docker Desktop
+# emulation note in the Accumulated Learnings.
 kubernetes = []
