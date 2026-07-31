@@ -2,7 +2,7 @@
 
 The Hawkes process is the **temporal** complement to malcolm's
 **magnitude** distributions. While [`malcolm_core::distributions`][dist] models
-*how big* a fault is, [`malcolm_core::hawkes`][hawkes] models *when* faults
+_how big_ a fault is, [`malcolm_core::hawkes`][hawkes] models _when_ faults
 arrive. Real outages cluster — one failure raises the probability of the next
 (retry storms, thundering herds, cascading timeouts). The Hawkes process
 captures this with a self-exciting conditional intensity.
@@ -54,7 +54,7 @@ for this reason.
 5. On reject: keep the same `t` and `λ`, go to 1.
 6. Stop when `t + Δt > horizon` or `max_events` reached.
 
-For exponential-kernel Hawkes, the intensity can only *decay* between events,
+For exponential-kernel Hawkes, the intensity can only _decay_ between events,
 so `λ̄ = λ(t)` (the current value) dominates the interval. We use
 `λ̄ = λ(t) + α` for a slightly looser bound that keeps the rejection rate
 bounded away from 1 in the early transient.
@@ -84,8 +84,8 @@ separated by quiet intervals, because each event temporarily raises the rate.
 The CV of its inter-arrival distribution is strictly greater than 1 and grows
 with the branching ratio. This is exactly the property malcolm wants for
 realistic fault injection — `distributions::PowerLaw` gives a heavy-tailed
-fault *magnitude*; `hawkes::HawkesProcess` gives a heavy-tailed fault
-*arrival pattern* (clustered bursts).
+fault _magnitude_; `hawkes::HawkesProcess` gives a heavy-tailed fault
+_arrival pattern_ (clustered bursts).
 
 ## Quick start
 
