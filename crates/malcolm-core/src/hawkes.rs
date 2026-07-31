@@ -441,8 +441,15 @@ mod tests {
         let p = unwrap_or_panic(HawkesProcess::new(0.5, 0.4, 1.0), "construction");
         let events = p.simulate(20.0, 7, 500);
         for w in events.windows(2) {
-            assert!(w[0] < w[1], "events must be strictly sorted: {w:?}");
-            assert!(w[1] <= 20.0, "events must lie within the horizon");
+            let a = w.first().copied();
+            let b = w.get(1).copied();
+            match (a, b) {
+                (Some(a), Some(b)) => {
+                    assert!(a < b, "events must be strictly sorted: {w:?}");
+                    assert!(b <= 20.0, "events must lie within the horizon");
+                }
+                _ => panic!("test bug: window of size 2 had fewer than 2 elements"),
+            }
         }
     }
 
@@ -517,7 +524,23 @@ mod tests {
             if evs.len() < 2 {
                 return 0.0;
             }
-            let diffs: Vec<f64> = evs.windows(2).map(|w| w[1] - w[0]).collect();
+            // Build inter-arrival diffs without raw indexing: each
+            // window is guaranteed to have two elements (the
+            // pre-condition above), so unwrap_or_panic with a clear
+            // message is the explicit failure path.
+            let diffs: Vec<f64> = evs
+                .windows(2)
+                .map(|w| {
+                    let a = w.first().copied();
+                    let b = w.get(1).copied();
+                    match (a, b) {
+                        (Some(a), Some(b)) => b - a,
+                        _ => panic!(
+                            "test bug: windows(2) yielded a slice with fewer than 2 elements"
+                        ),
+                    }
+                })
+                .collect();
             let n = f64::from(u32::try_from(diffs.len()).unwrap_or(u32::MAX));
             let mean = diffs.iter().sum::<f64>() / n;
             if mean <= 0.0 {
