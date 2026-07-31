@@ -154,7 +154,7 @@ impl SearchSpace {
 }
 
 /// Knobs that control the search loop.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchConfig {
     /// Master seed for the search. Forwarded to egobox's RNG and to the
     /// objective's per-evaluation seed (seed + iteration index).
@@ -300,7 +300,7 @@ pub fn bayes_search<O: Objective + Clone>(
     // Decode best result.
     let x_best: Vec<f64> = res.x_opt.to_vec();
     let best_config = space.from_raw(&x_best);
-    let best_score = -res.y_opt[0];
+    let best_score = -res.y_opt.first().copied().unwrap_or(0.0);
 
     let trace = trace_buf.drain();
     Ok(SearchResult {
@@ -343,7 +343,7 @@ struct TraceBuf {
 }
 
 impl TraceBuf {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             iter: AtomicUsize::new(0),
             entries: Mutex::new(Vec::new()),
@@ -356,18 +356,25 @@ impl TraceBuf {
 
     fn record(&self, cfg: FaultConfig, score: f64) {
         let iter = self.iter.load(Ordering::SeqCst).saturating_sub(1);
-        self.entries
-            .lock()
-            .expect("entries lock poisoned")
-            .push(TraceEntry {
-                config: cfg,
-                score,
-                iteration: iter,
-            });
+        lock_or_recover(&self.entries).push(TraceEntry {
+            config: cfg,
+            score,
+            iteration: iter,
+        });
     }
 
     fn drain(self: std::sync::Arc<Self>) -> Vec<TraceEntry> {
-        std::mem::take(&mut *self.entries.lock().expect("entries lock poisoned"))
+        std::mem::take(&mut *lock_or_recover(&self.entries))
+    }
+}
+
+/// Lock a `Mutex`, recovering from poisoning. A poisoned mutex
+/// indicates another thread panicked while holding the lock; the
+/// guard is still acquired so the operation can finish.
+fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
     }
 }
 
@@ -397,7 +404,11 @@ impl<O: Objective + Clone> egobox_ego::ObjFn for ObjectiveAdapter<'_, O> {
                 .wrapping_add((iter as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9));
             let score = self.objective.evaluate(&cfg, seed);
             self.trace.record(cfg, score);
-            out[[i, 0]] = -score;
+            // `i < nrows` so the index is in bounds; use `get_mut` to
+            // satisfy clippy::indexing_slicing.
+            if let Some(slot) = out.get_mut((i, 0)) {
+                *slot = -score;
+            }
         }
         Ok(out)
     }
@@ -410,9 +421,29 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(test)]
-#[allow(clippy::float_cmp, reason = "exact parameter validation")]
+#[allow(
+    clippy::float_cmp,
+    clippy::panic,
+    reason = "test assertions on exact parameter validation; tests use panic! for invariant failures"
+)]
 mod tests {
     use super::*;
+
+    /// Test helper: unwrap a `Result` or panic with the `ctx` label.
+    fn unwrap_or_panic<T, E: std::fmt::Debug>(r: Result<T, E>, ctx: &str) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("{ctx}: {e:?}"),
+        }
+    }
+
+    /// Test helper: unwrap `Result::Err` or panic.
+    fn unwrap_err_or_panic<T: std::fmt::Debug, E>(r: Result<T, E>, ctx: &str) -> E {
+        match r {
+            Err(e) => e,
+            Ok(v) => panic!("{ctx}: expected Err, got Ok({v:?})"),
+        }
+    }
 
     /// Objective: a 1-D parabola centred at `x=5` so the optimum is at
     /// `[5.0]` and easy to verify.
@@ -460,8 +491,10 @@ mod tests {
     #[test]
     fn rejects_empty_space() {
         let cfg = SearchConfig::default();
-        let err =
-            bayes_search(&SearchSpace::default(), &Parabola { optimum: 5.0 }, &cfg).unwrap_err();
+        let err = unwrap_err_or_panic(
+            bayes_search(&SearchSpace::default(), &Parabola { optimum: 5.0 }, &cfg),
+            "empty space",
+        );
         assert_eq!(err, SearchError::EmptySpace);
     }
 
@@ -472,7 +505,10 @@ mod tests {
             max_iters: 0,
             ..SearchConfig::default()
         };
-        let err = bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg).unwrap_err();
+        let err = unwrap_err_or_panic(
+            bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg),
+            "zero budget",
+        );
         assert_eq!(err, SearchError::ZeroBudget);
     }
 
@@ -485,9 +521,12 @@ mod tests {
             n_doe: 3,
             single_threaded: true,
         };
-        let result = bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg).expect("search");
+        let result = unwrap_or_panic(
+            bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg),
+            "search",
+        );
         // Best x should be near 5.0.
-        let x_best = result.best_config.params[0];
+        let x_best = result.best_config.params.first().copied().unwrap_or(0.0);
         assert!((x_best - 5.0).abs() < 1.0, "best x = {x_best}");
         // Best score should be ≥ −(some reasonable squared error).
         assert!(result.best_score > -1.0);
@@ -504,8 +543,14 @@ mod tests {
             n_doe: 3,
             single_threaded: true,
         };
-        let r1 = bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg).expect("search");
-        let r2 = bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg).expect("search");
+        let r1 = unwrap_or_panic(
+            bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg),
+            "search",
+        );
+        let r2 = unwrap_or_panic(
+            bayes_search(&space, &Parabola { optimum: 5.0 }, &cfg),
+            "search",
+        );
         assert_eq!(r1.best_config, r2.best_config, "deterministic best config");
         assert_eq!(r1.trace.len(), r2.trace.len(), "deterministic trace length");
         for (a, b) in r1.trace.iter().zip(r2.trace.iter()) {
@@ -528,9 +573,12 @@ mod tests {
             n_doe: 3,
             single_threaded: true,
         };
-        let result = bayes_search(&space, &Parabola { optimum: 7.0 }, &cfg).expect("search");
+        let result = unwrap_or_panic(
+            bayes_search(&space, &Parabola { optimum: 7.0 }, &cfg),
+            "search",
+        );
         // Best x must be a whole integer.
-        let x = result.best_config.params[0];
+        let x = result.best_config.params.first().copied().unwrap_or(0.0);
         assert_eq!(x, x.round(), "best x is not an integer: {x}");
         assert!((x - 7.0).abs() < 1.5, "best integer {x} not near 7");
     }
@@ -555,12 +603,14 @@ mod tests {
             n_doe: 3,
             single_threaded: true,
         };
-        let result =
-            bayes_search(&space, &MultiCentroid { centres: vec![1.0] }, &cfg).expect("search");
+        let result = unwrap_or_panic(
+            bayes_search(&space, &MultiCentroid { centres: vec![1.0] }, &cfg),
+            "search",
+        );
         // x ∈ [-5, 5] (continuous), k ∈ {0, 1, 2, 3} (integer).
-        assert!(result.best_config.params[0] >= -5.0);
-        assert!(result.best_config.params[0] <= 5.0);
-        let k = result.best_config.params[1];
+        let x = result.best_config.params.first().copied().unwrap_or(0.0);
+        assert!((-5.0..=5.0).contains(&x));
+        let k = result.best_config.params.get(1).copied().unwrap_or(0.0);
         assert!((0.0..=3.0).contains(&k));
         assert_eq!(k, k.round(), "k is not an integer: {k}");
     }
