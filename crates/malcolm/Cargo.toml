@@ -65,6 +65,21 @@ proptest = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
+# Bayesian-optimization adaptive fault search (T41). Optional; off by
+# default. Pulled in only when the `bayesopt` feature is enabled.
+# egobox-ego provides the EGO loop with Kriging surrogate + EI infill.
+# We deliberately do NOT enable egobox's `blas` feature — the pure-Rust
+# linfa-linalg backend is enough for malcolm's small search spaces
+# (typically 3–10 parameters).
+[dependencies.egobox-ego]
+version = "0.38"
+optional = true
+
+[dependencies.ndarray]
+version = "0.16"
+optional = true
+default-features = false
+
 [features]
 default = []
 tokio = ["dep:tokio"]
@@ -76,6 +91,9 @@ otel-http = ["dep:opentelemetry-otlp", "opentelemetry-otlp/http-proto"]
 # Declared as a feature so the module and binary are not pulled into the
 # default build.
 statsd = []
+# Bayesian-optimization adaptive fault search (T41). Pulls in egobox-ego
+# + ndarray. Pure-Rust linear algebra (linfa-linalg backend) — no BLAS.
+bayesopt = ["dep:egobox-ego", "dep:ndarray"]
 
 [[bench]]
 name = "core_math"

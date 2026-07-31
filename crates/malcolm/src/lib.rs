@@ -42,6 +42,8 @@ pub mod replay;
 pub mod report_formats;
 pub mod rootcause;
 pub mod scenario;
+#[cfg(feature = "bayesopt")]
+pub mod search;
 pub mod topology;
 pub mod tracing_layer;
 pub mod traits;
