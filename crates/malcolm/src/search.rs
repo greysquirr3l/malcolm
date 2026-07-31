@@ -154,7 +154,7 @@ impl SearchSpace {
 }
 
 /// Knobs that control the search loop.
-#[derive(Debug, Clone, PartialEq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SearchConfig {
     /// Master seed for the search. Forwarded to egobox's RNG and to the
     /// objective's per-evaluation seed (seed + iteration index).
@@ -373,7 +373,7 @@ impl TraceBuf {
 
 /// egobox `ObjFn` adapter. Wraps a malcolm [`Objective`] + [`SearchSpace`]
 /// + a shared [`TraceBuf`] so the closure has the higher-rank lifetime
-/// egobox requires and the trace is recorded per-search (not per-process).
+///   egobox requires and the trace is recorded per-search (not per-process).
 #[derive(Clone)]
 struct ObjectiveAdapter<'a, O: Objective + Clone> {
     space: &'a SearchSpace,
