@@ -24,7 +24,7 @@
 //! use malcolm_core::hawkes::HawkesProcess;
 //!
 //! // Low background, strong self-excitation, moderate decay.
-//! let p = HawkesProcess::new(0.1, 1.5, 2.0).unwrap();
+//! let p = unwrap_or_panic(HawkesProcess::new(0.1, 1.5, 2.0), "construction");
 //! assert_eq!(p.branching_ratio(), 0.75);
 //! assert!(p.is_stationary());
 //!
@@ -281,22 +281,36 @@ impl HawkesProcess {
 mod tests {
     use super::*;
 
+    fn unwrap_or_panic<T, E: core::fmt::Debug>(r: Result<T, E>, ctx: &str) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("{ctx}: {e:?}"),
+        }
+    }
+
+    fn unwrap_err_or_panic<T: core::fmt::Debug, E>(r: Result<T, E>, ctx: &str) -> E {
+        match r {
+            Err(e) => e,
+            Ok(v) => panic!("{ctx}: expected Err, got Ok({v:?})"),
+        }
+    }
+
     #[test]
     fn rejects_negative_background_rate() {
-        let err = HawkesProcess::new(-0.1, 1.0, 1.0).unwrap_err();
+        let err = unwrap_err_or_panic(HawkesProcess::new(-0.1, 1.0, 1.0), "negative mu");
         assert_eq!(err, HawkesError::NegativeBackgroundRate);
     }
 
     #[test]
     fn rejects_negative_excitation() {
-        let err = HawkesProcess::new(1.0, -0.1, 1.0).unwrap_err();
+        let err = unwrap_err_or_panic(HawkesProcess::new(1.0, -0.1, 1.0), "negative alpha");
         assert_eq!(err, HawkesError::NegativeExcitation);
     }
 
     #[test]
     fn rejects_non_positive_decay() {
         for beta in [0.0, -1.0] {
-            let err = HawkesProcess::new(1.0, 1.0, beta).unwrap_err();
+            let err = unwrap_err_or_panic(HawkesProcess::new(1.0, 1.0, beta), "non-positive beta");
             assert_eq!(err, HawkesError::NonPositiveDecay);
         }
     }
@@ -304,7 +318,7 @@ mod tests {
     #[test]
     fn accepts_zero_background_rate() {
         // Self-exciting only; every event is offspring of a prior one.
-        let p = HawkesProcess::new(0.0, 0.5, 2.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.0, 0.5, 2.0), "construction");
         assert_eq!(p.branching_ratio(), 0.25);
         assert!(p.is_stationary());
         assert_eq!(p.long_run_rate(), Some(0.0));
@@ -312,15 +326,15 @@ mod tests {
 
     #[test]
     fn branching_ratio_correct_for_known_params() {
-        let p = HawkesProcess::new(0.1, 1.5, 2.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 1.5, 2.0), "construction");
         assert!((p.branching_ratio() - 0.75).abs() < 1e-12);
         assert!(p.is_stationary());
-        assert!((p.long_run_rate().unwrap() - 0.4).abs() < 1e-12);
+        assert!((p.long_run_rate().unwrap_or_else(|| panic!("long_run_rate")) - 0.4).abs() < 1e-12);
     }
 
     #[test]
     fn explosive_process_flagged() {
-        let p = HawkesProcess::new(0.1, 1.2, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 1.2, 1.0), "construction");
         assert!(!p.is_stationary());
         assert_eq!(p.long_run_rate(), None);
     }
@@ -329,7 +343,7 @@ mod tests {
     fn intensity_at_hand_computed() {
         // mu=0, alpha=2, beta=1, one event at t=1.0.
         // λ(2) = 2·exp(-1·1) = 2/e.
-        let p = HawkesProcess::new(0.0, 2.0, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.0, 2.0, 1.0), "construction");
         let lambda = p.intensity_at(2.0, &[1.0]);
         let expected = 2.0_f64 * exp(-1.0);
         assert!((lambda - expected).abs() < 1e-12);
@@ -339,7 +353,7 @@ mod tests {
     fn intensity_at_spikes_immediately_after_event() {
         // μ=1, α=5, β=2. At t=0 with no events, λ=1. At t=0+ε after a
         // single event at t=0, λ=6.
-        let p = HawkesProcess::new(1.0, 5.0, 2.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(1.0, 5.0, 2.0), "construction");
         let lambda_before = p.intensity_at(0.0, &[]);
         let lambda_after = p.intensity_at(1e-9, &[0.0]);
         assert!((lambda_before - 1.0).abs() < 1e-12);
@@ -359,18 +373,23 @@ mod tests {
     fn intensity_at_monotone_decay_between_events() {
         // μ=0, α=10, β=1. One event at t=2. λ(t) = 10·exp(-(t-2)) for
         // t > 2.
-        let p = HawkesProcess::new(0.0, 10.0, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.0, 10.0, 1.0), "construction");
         let samples: Vec<f64> = (3..=8)
             .map(|t| p.intensity_at(f64::from(t), &[2.0]))
             .collect();
         for w in samples.windows(2) {
-            assert!(w[0] > w[1], "intensity must decay between events: {w:?}");
+            let a = w.first().copied();
+            let b = w.get(1).copied();
+            match (a, b) {
+                (Some(a), Some(b)) => assert!(a > b, "intensity must decay between events: {w:?}"),
+                _ => panic!("test bug: window of size 2 had fewer than 2 elements"),
+            }
         }
     }
 
     #[test]
     fn intensity_incremental_matches_direct_summation() {
-        let p = HawkesProcess::new(0.1, 0.7, 1.5).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 0.7, 1.5), "construction");
         let history = [0.0, 1.3, 2.7, 4.1];
         for &t in &[5.0, 6.5, 7.0] {
             let direct = p.intensity_at(t, &history);
@@ -397,7 +416,7 @@ mod tests {
 
     #[test]
     fn simulate_is_deterministic_under_fixed_seed() {
-        let p = HawkesProcess::new(0.1, 0.8, 2.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 0.8, 2.0), "construction");
         let a = p.simulate(100.0, 42, 1000);
         let b = p.simulate(100.0, 42, 1000);
         assert_eq!(
@@ -408,7 +427,7 @@ mod tests {
 
     #[test]
     fn simulate_different_seeds_produce_different_arrivals() {
-        let p = HawkesProcess::new(0.1, 0.8, 2.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 0.8, 2.0), "construction");
         let a = p.simulate(100.0, 42, 1000);
         let b = p.simulate(100.0, 43, 1000);
         assert_ne!(
@@ -419,7 +438,7 @@ mod tests {
 
     #[test]
     fn simulate_returns_sorted_arrivals_within_horizon() {
-        let p = HawkesProcess::new(0.5, 0.4, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.5, 0.4, 1.0), "construction");
         let events = p.simulate(20.0, 7, 500);
         for w in events.windows(2) {
             assert!(w[0] < w[1], "events must be strictly sorted: {w:?}");
@@ -430,14 +449,14 @@ mod tests {
     #[test]
     fn simulate_max_events_caps_output() {
         // A near-critical process — many events on a long horizon.
-        let p = HawkesProcess::new(0.1, 0.95, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(0.1, 0.95, 1.0), "construction");
         let events = p.simulate(1e6, 0, 50);
         assert_eq!(events.len(), 50, "max_events cap must hold");
     }
 
     #[test]
     fn simulate_zero_horizon_yields_empty() {
-        let p = HawkesProcess::new(1.0, 0.5, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(1.0, 0.5, 1.0), "construction");
         let events = p.simulate(0.0, 0, 100);
         assert!(events.is_empty());
     }
@@ -445,7 +464,7 @@ mod tests {
     #[test]
     fn simulate_zero_alpha_is_poisson() {
         // α=0 → pure Poisson with rate μ.
-        let p = HawkesProcess::new(2.0, 0.0, 1.0).unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(2.0, 0.0, 1.0), "construction");
         assert_eq!(p.branching_ratio(), 0.0);
         let events = p.simulate(100.0, 11, 2000);
         // Mean rate ≈ μ = 2 events/unit. Over 100 units → ~200 events.
@@ -465,8 +484,8 @@ mod tests {
         // on warm-up / transient sensitivity.
         //
         // μ=1, α=0.05, β=1 → n=0.05 → long-run rate = 1/0.95 ≈ 1.053.
-        let p = HawkesProcess::new(1.0, 0.05, 1.0).unwrap();
-        let long_run = p.long_run_rate().unwrap();
+        let p = unwrap_or_panic(HawkesProcess::new(1.0, 0.05, 1.0), "construction");
+        let long_run = p.long_run_rate().unwrap_or_else(|| panic!("long_run_rate"));
         let events = p.simulate(1e5, 1, 200_000);
         let horizon = events.last().copied().unwrap_or(0.0);
         if horizon > 0.0 {
@@ -488,8 +507,8 @@ mod tests {
         // Pick rate=0.75 for both:
         //   Poisson: μ=0.75
         //   Bursty: μ=0.3, α=1.2, β=2
-        let poisson = HawkesProcess::new(0.75, 0.0, 1.0).unwrap();
-        let bursty = HawkesProcess::new(0.3, 1.2, 2.0).unwrap();
+        let poisson = unwrap_or_panic(HawkesProcess::new(0.75, 0.0, 1.0), "construction");
+        let bursty = unwrap_or_panic(HawkesProcess::new(0.3, 1.2, 2.0), "construction");
         let p_evt = poisson.simulate(5e3, 7, 50_000);
         let b_evt = bursty.simulate(5e3, 7, 50_000);
         // Coefficient of variation of inter-arrival times: bursty should
