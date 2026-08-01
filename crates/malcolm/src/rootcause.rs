@@ -115,10 +115,15 @@ impl RootCauseConfig {
     }
 }
 
-/// The full result of a root-cause inference: the posterior
-/// plus the context used to compute it. `serde`-serializable so
-/// it can be persisted alongside the `ScenarioReport` or
-/// shipped to `malcolm-lens` for narration (T40 → T20 hand-off).
+/// The full result of a root-cause inference.
+///
+/// Combines the posterior with the context used to compute
+/// it. `serde`-serializable so it can be persisted alongside
+/// the `ScenarioReport` or shipped to `malcolm-lens` for
+/// narration (T40 → T20 hand-off).
+///
+/// `Eq` is *not* derived because `SerializableCandidate`
+/// contains `f64` (which is only `PartialEq`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RootCauseReport {
     /// The ranked posterior over candidate origins. See
@@ -137,8 +142,9 @@ pub struct RootCauseReport {
     pub observation: SerializableObservation,
 }
 
-/// `serde`-serializable view of [`RootCausePosterior`]. We
-/// can't derive Serialize on the core type (it lives in
+/// `serde`-serializable view of [`RootCausePosterior`].
+///
+/// We can't derive `Serialize` on the core type (it lives in
 /// `malcolm-core` which is `no_std`), so we mirror it here.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SerializablePosterior {
@@ -162,7 +168,7 @@ pub struct SerializableCandidate {
 }
 
 /// `serde`-serializable view of [`Observation`].
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SerializableObservation {
     /// Nodes observed as failed.
     pub failed: Vec<Origin>,
@@ -181,7 +187,7 @@ impl RootCauseReport {
 
     /// Convenience: the entropy in nats.
     #[must_use]
-    pub fn entropy(&self) -> f64 {
+    pub const fn entropy(&self) -> f64 {
         self.posterior.entropy
     }
 }
@@ -209,8 +215,10 @@ pub fn root_cause_from_scenario(
     root_cause_with_observation(report, topology, config, None, None)
 }
 
-/// Like [`root_cause_from_scenario`], but lets the caller inject
-/// an externally-observed failed/healthy node *after* the
+/// Like [`root_cause_from_scenario`], but lets the caller
+/// inject extra failed/healthy observations.
+///
+/// The injected nodes are merged *after* the
 /// `ScenarioReport`'s events are folded in. Useful for
 /// augmenting with health-check data.
 #[must_use]
@@ -349,9 +357,27 @@ fn serialise_report(
     clippy::float_cmp,
     reason = "tests use builder pattern discard + exact equality on math results"
 )]
+#[expect(clippy::panic, reason = "tests use panic! to assert invariants")]
 mod tests {
     use super::*;
     use crate::topology::Topology;
+
+    /// Test helper that returns the most-probable candidate
+    /// or panics if the posterior is empty.
+    fn top_candidate(rcr: &RootCauseReport) -> &SerializableCandidate {
+        rcr.most_probable()
+            .unwrap_or_else(|| panic!("posterior has no candidates"))
+    }
+
+    /// Locate a serialised candidate by origin. Test helper
+    /// that avoids `Option::expect`/`unwrap`.
+    fn find_serialised<'a>(rcr: &'a RootCauseReport, origin: &str) -> &'a SerializableCandidate {
+        rcr.posterior
+            .candidates
+            .iter()
+            .find(|c| c.origin == origin)
+            .unwrap_or_else(|| panic!("candidate {origin} missing from posterior"))
+    }
 
     fn build_scenario() -> (Topology, Vec<String>) {
         // Chain A -> B -> C. The scenario injects faults on
@@ -420,7 +446,7 @@ mod tests {
         let config = RootCauseConfig::new();
         let rcr = root_cause_from_scenario(&report, &topology, &config);
         assert_eq!(rcr.candidate_count, 1);
-        let top = rcr.most_probable().expect("top");
+        let top = top_candidate(&rcr);
         assert_eq!(top.origin, "A");
         assert!((top.posterior - 1.0).abs() < 1e-9, "got {}", top.posterior);
     }
@@ -449,7 +475,7 @@ mod tests {
             let report = make_report_with_nodes("independent", &nset, 42, 1);
             let rcr = root_cause_from_scenario(&report, &topology, &config);
             assert_eq!(rcr.candidate_count, 1);
-            assert_eq!(rcr.most_probable().unwrap().origin, cand);
+            assert_eq!(top_candidate(&rcr).origin, cand);
         }
         // Now construct a *single* scenario with all three
         // candidates and all three observed failed. With
@@ -485,7 +511,7 @@ mod tests {
         let config = RootCauseConfig::new();
         let rcr = root_cause_from_scenario(&report, &topology, &config);
         assert_eq!(rcr.candidate_count, 1);
-        let top = rcr.most_probable().expect("top");
+        let top = top_candidate(&rcr);
         assert_eq!(top.origin, "A");
         assert!((top.posterior - 1.0).abs() < 1e-9);
     }
@@ -506,7 +532,7 @@ mod tests {
         config.add_healthy("B");
         let rcr = root_cause_from_scenario(&report, &topology, &config);
         assert_eq!(rcr.candidate_count, 1);
-        assert_eq!(rcr.most_probable().unwrap().posterior, 0.0);
+        assert_eq!(top_candidate(&rcr).posterior, 0.0);
     }
 
     #[test]
@@ -528,7 +554,7 @@ mod tests {
         config.add_failed("C");
         config.add_healthy("A");
         let rcr = root_cause_from_scenario(&report, &topology, &config);
-        let top = rcr.most_probable().expect("top");
+        let top = top_candidate(&rcr);
         assert_eq!(top.origin, "B");
         assert!((top.posterior - 1.0).abs() < 1e-9);
     }
@@ -542,12 +568,7 @@ mod tests {
         config.set_prior("B", 1.0);
         config.set_prior("C", 1.0);
         let rcr = root_cause_from_scenario(&report, &topology, &config);
-        let a = rcr
-            .posterior
-            .candidates
-            .iter()
-            .find(|c| c.origin == "A")
-            .expect("A");
+        let a = find_serialised(&rcr, "A");
         assert!(a.posterior > 0.8, "A should dominate: got {}", a.posterior);
     }
 
@@ -559,8 +580,14 @@ mod tests {
         let report = make_report_with_nodes("chain", &nodes, 42, 1);
         let config = RootCauseConfig::new();
         let rcr = root_cause_from_scenario(&report, &topology, &config);
-        let json = serde_json::to_string(&rcr).expect("serialise");
-        let back: RootCauseReport = serde_json::from_str(&json).expect("deserialise");
+        let json = match serde_json::to_string(&rcr) {
+            Ok(s) => s,
+            Err(e) => panic!("serialise failed: {e}"),
+        };
+        let back: RootCauseReport = match serde_json::from_str(&json) {
+            Ok(r) => r,
+            Err(e) => panic!("deserialise failed: {e}"),
+        };
         assert_eq!(back.candidate_count, rcr.candidate_count);
         assert!((back.entropy() - rcr.entropy()).abs() < 1e-12);
     }
@@ -585,7 +612,7 @@ mod tests {
         let report = make_report_with_nodes("v", &nodes, 42, 2);
         let config = RootCauseConfig::new();
         let rcr = root_cause_with_observation(&report, &topology, &config, Some("C"), Some("A"));
-        let top = rcr.most_probable().expect("top");
+        let top = top_candidate(&rcr);
         assert_eq!(top.origin, "B");
         assert!((top.posterior - 1.0).abs() < 1e-9);
     }
