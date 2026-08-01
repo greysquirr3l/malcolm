@@ -237,6 +237,9 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
+
+      - name: Build release notes
+        id: notes
         env:
           RELEASE_VERSION: ${{ needs.resolve-tag.outputs.version }}
         run: |
