@@ -292,6 +292,7 @@ impl fmt::Display for RootCausePosterior {
 /// come from T39 (deterministic); the log-space path is
 /// pure arithmetic. Two calls with identical inputs produce
 /// identical posteriors.
+#[must_use]
 pub fn infer_posterior(
     graph: &FailureGraph,
     prior: &OriginPrior,
