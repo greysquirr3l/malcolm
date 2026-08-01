@@ -33,6 +33,10 @@ use malcolm_core::bifurcation::{BifurcationProfile, Regime, classify};
 use malcolm_core::types::{DryRunReport, FaultEvent, FaultResult};
 
 use crate::fault::{Fault, FaultContext};
+use crate::metrics::{
+    MetricsHub, MetricsRecorder, sample_for_scenario_duration, sample_for_skipped_fault,
+    samples_for_fault_result,
+};
 use crate::topology::Topology;
 
 /// Serializable scenario regime used in report payloads.
@@ -169,6 +173,16 @@ impl ChaosScenario {
 
     /// Execute all faults in order and return a deterministic report.
     pub fn run(&self, ctx: &mut FaultContext) -> ScenarioReport {
+        self.run_with_metrics(ctx, &MetricsHub::new())
+    }
+
+    /// Execute all faults in order, fan metric samples out through `hub`.
+    ///
+    /// Identical observable behavior to [`run`](Self::run) — the report, span,
+    /// and tracing events are unchanged. The only difference is that this
+    /// variant also pushes structured metric samples through the supplied
+    /// [`MetricsHub`].
+    pub fn run_with_metrics(&self, ctx: &mut FaultContext, hub: &MetricsHub) -> ScenarioReport {
         let span = tracing::info_span!(
             target: "malcolm",
             "scenario_run",
@@ -200,7 +214,15 @@ impl ChaosScenario {
                     if event.intensity > max_intensity {
                         max_intensity = event.intensity;
                     }
-                    events.push(ScenarioEvent::from(event));
+                    events.push(ScenarioEvent::from(event.clone()));
+                    for sample in samples_for_fault_result(
+                        &event,
+                        &self.name,
+                        ScenarioRegime::from(classify(event.intensity, &self.profile)),
+                        event.timestamp_ms,
+                    ) {
+                        hub.record(&sample);
+                    }
                 }
                 FaultResult::Skipped(reason) => {
                     tracing::info!(
@@ -214,6 +236,14 @@ impl ChaosScenario {
                         skip_reason = ?reason,
                         "fault skipped during scenario run",
                     );
+                    let sample = sample_for_skipped_fault(
+                        fault.fault_type(),
+                        &ctx.node_id,
+                        &self.name,
+                        reason,
+                        ctx.timestamp_ms,
+                    );
+                    hub.record(&sample);
                 }
             }
         }
@@ -235,13 +265,15 @@ impl ChaosScenario {
             "scenario run complete",
         );
 
-        ScenarioReport {
+        let report = ScenarioReport {
             name: self.name.clone(),
             seed: self.seed,
             regime,
             events,
             total_duration_ms,
-        }
+        };
+        hub.record(&sample_for_scenario_duration(&report));
+        report
     }
 
     /// Execute a full dry-run across all scenario faults.
