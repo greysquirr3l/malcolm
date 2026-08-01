@@ -161,6 +161,41 @@ assert_eq!(opened.seed, record.seed);
 - Non-interactive open is denied unless a passphrase provider is configured.
 - Automation supports env-var, command, and keystore-backed passphrase sources.
 
+## Observability
+
+`malcolm::metrics` provides an in-process seam for emitting structured metric
+samples alongside the existing `tracing` events. By default, every sample goes
+to a no-op recorder so behavior and dependencies are unchanged.
+
+```rust
+use std::sync::{Arc, Mutex};
+use malcolm::metrics::{MetricSample, MetricsHub, MetricsRecorder};
+
+#[derive(Default)]
+struct Collecting(Arc<Mutex<Vec<MetricSample>>>);
+impl MetricsRecorder for Collecting {
+    fn record(&self, s: &MetricSample) { self.0.lock().unwrap().push(s.clone()); }
+}
+
+let recorder = Arc::new(Collecting::default());
+let hub = MetricsHub::new().with_recorder(recorder);
+scenario.run_with_metrics(&mut ctx, &hub);
+```
+
+The canonical metric taxonomy (`malcolm_faults_injected_total`,
+`malcolm_faults_skipped_total`, `malcolm_fault_intensity`,
+`malcolm_fault_latency_ms`, `malcolm_scenario_duration_ms`) is shared between
+malcolm and every exporter. See [`docs/metrics.md`](docs/metrics.md) for the
+full table and a custom-recorder example.
+
+Concrete exporters plug into this seam behind feature flags:
+
+| Exporter | Feature | Status |
+|----------|---------|--------|
+| Prometheus | `prometheus` | planned (T27) |
+| OpenTelemetry / OTLP | `otel`, `otel-grpc`, `otel-http` | planned (T28) |
+| StatsD / Datadog | `statsd` | planned (T29) |
+
 ## Worked Examples
 
 Run the examples from `crates/malcolm`:
