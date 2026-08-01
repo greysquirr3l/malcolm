@@ -2001,6 +2001,7 @@ dependencies = [
 name = "malcolm-core"
 version = "0.6.0"
 dependencies = [
+ "criterion",
  "libm",
  "proptest",
  "rand 0.10.2",
