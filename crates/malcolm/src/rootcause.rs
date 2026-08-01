@@ -82,6 +82,7 @@ pub struct RootCauseConfig {
 
 impl RootCauseConfig {
     /// Default configuration: uniform prior, 10,000 MC samples.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sample_count: 10_000,
