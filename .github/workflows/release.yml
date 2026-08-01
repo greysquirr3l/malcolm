@@ -195,7 +195,7 @@ jobs:
             fi
 
             for attempt in {1..5}; do
-              if cargo publish --manifest-path "$manifest" --locked 2>&1 | tee /tmp/publish-${crate}.log; then
+              if cargo publish --manifest-path "$manifest" --locked 2>&1 | tee "/tmp/publish-${crate}.log"; then
                 echo "${crate}@${RELEASE_VERSION} publish succeeded"
                 wait_for_index "$crate" || true
                 return 0
@@ -206,7 +206,7 @@ jobs:
                 return 0
               fi
 
-              if rg -qi "already exists|already uploaded|already been uploaded" /tmp/publish-${crate}.log; then
+              if rg -qi "already exists|already uploaded|already been uploaded" "/tmp/publish-${crate}.log"; then
                 echo "${crate}@${RELEASE_VERSION} appears already published"
                 wait_for_index "$crate" || true
                 return 0

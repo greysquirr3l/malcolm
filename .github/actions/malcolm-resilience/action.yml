@@ -9,11 +9,9 @@ inputs:
     description: >-
       Named scenario preset to execute (see `malcolm-run --list-presets`).
     required: true
-    type: string
   seed:
     description: "Override the scenario seed (default: 42)."
     required: false
-    type: string
     default: "42"
   budget:
     description: >-
@@ -21,39 +19,32 @@ inputs:
       but recommended; without a budget the gate never fires on
       policy violation.
     required: false
-    type: string
     default: ""
   assert-min-injected:
     description: "Inline shortcut for `min_injected_total = N`."
     required: false
-    type: string
     default: ""
   assert-max-injected:
     description: "Inline shortcut for `max_injected_total = N`."
     required: false
-    type: string
     default: ""
   fail-fast:
     description: "Stop evaluating budget rules after the first violation."
     required: false
-    type: string
     default: "false"
   junit:
     description: "Write a JUnit XML report to this path."
     required: false
-    type: string
     default: "malcolm-junit.xml"
   sarif:
     description: "Write a SARIF 2.1.0 report to this path."
     required: false
-    type: string
     default: "malcolm.sarif"
   working-directory:
     description: >-
       Where to run the build. The composite action checks out the
       repository at the caller's `working-directory` (default: repo root).
     required: false
-    type: string
     default: "."
 
 outputs:
