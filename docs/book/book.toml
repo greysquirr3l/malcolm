@@ -12,10 +12,16 @@ create-missing = false
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/greysquirr3l/malcom"
-edit-url-template = "https://github.com/greysquirr3l/malcom/edit/main/docs/book/{path}"
+git-repository-url = "https://github.com/greysquirr3l/malcolm"
+edit-url-template = "https://github.com/greysquirr3l/malcolm/edit/main/docs/book/{path}"
 site-url = "/"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 [output.html.fold]
 enable = true
 level = 1
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

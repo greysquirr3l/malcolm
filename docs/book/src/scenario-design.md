@@ -62,6 +62,35 @@ and `Topology::to_mermaid()` produces a Mermaid `graph TD` block.
 Edge labels carry the propagation weight so reviewers can spot
 unrealistic configurations at a glance.
 
+For example, a diamond topology (`A` fans out to `B` and `C`, both of
+which feed `D`) built with:
+
+```rust
+use malcolm::topology::Topology;
+
+let topology = Topology::builder()
+    .name("diamond")
+    .add_edge("A", "B", 0.7)
+    .add_edge("A", "C", 0.5)
+    .add_edge("B", "D", 1.0)
+    .add_edge("C", "D", 0.8)
+    .build();
+```
+
+renders via `topology.to_mermaid()` as:
+
+```mermaid
+graph TD
+  A["A"]
+  B["B"]
+  C["C"]
+  D["D"]
+  A -->|70%| B
+  A -->|50%| C
+  B -->|100%| D
+  C -->|80%| D
+```
+
 ## Presets
 
 `malcolm::presets` ships five named, ready-to-run scenarios for
