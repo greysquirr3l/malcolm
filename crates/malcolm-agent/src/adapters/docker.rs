@@ -236,7 +236,9 @@ impl ContainerAction {
 }
 
 /// Trait abstracting the subset of Docker daemon operations the
-/// adapter needs. The real implementation ([`BollardClient`]) wraps
+/// adapter needs.
+///
+/// The real implementation ([`BollardClient`]) wraps
 /// `bollard::Docker`; tests can substitute a recording
 /// implementation without spinning up a daemon.
 pub trait DockerClient: Send + Sync + std::fmt::Debug {
@@ -580,10 +582,12 @@ fn runtime_build() -> Result<Runtime, AgentError> {
         .map_err(|e| adapter_failure(format!("tokio runtime build: {e}")))
 }
 
-/// No-op connector: every method returns `Ok(())`. Used by
-/// [`DockerAdapter::default`] so callers that just need a
-/// placeholder adapter (e.g. an orchestration layer that gates on
-/// feature flags) can construct one without needing a daemon.
+/// No-op connector: every method returns [`Ok(())`].
+///
+/// Used by [`DockerAdapter::default`] so callers that just
+/// need a placeholder adapter (e.g. an orchestration layer
+/// that gates on feature flags) can construct one without
+/// needing a daemon.
 #[derive(Debug, Default)]
 pub struct NoopDockerClient;
 
@@ -634,7 +638,7 @@ fn parse_revert_description(desc: &str) -> Option<(&str, &str)> {
     Some((kind, name))
 }
 
-fn adapter_failure(reason: String) -> AgentError {
+const fn adapter_failure(reason: String) -> AgentError {
     AgentError::AdapterFailure {
         adapter: KIND,
         reason,
@@ -647,15 +651,48 @@ fn adapter_error_from_bollard(e: bollard::errors::Error) -> AgentError {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "tests use panic! to assert invariants")]
 mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    /// Lock a [`Mutex`], recovering from poisoning. A poisoned
+    /// mutex in a test indicates another thread panicked while
+    /// holding the lock; we still take the guard so the test
+    /// can finish and report its original panic. Avoids
+    /// `clippy::unwrap_used`.
+    fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+        match m.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    /// Unwrap a [`Result`] or panic with context. Replaces
+    /// [`Result::expect`] in tests (`clippy::expect_used`). The
+    /// `ctx` argument names the test step so a failure points
+    /// at the right call site.
+    fn unwrap_or_panic<T, E: std::fmt::Debug>(result: Result<T, E>, ctx: &str) -> T {
+        match result {
+            Ok(v) => v,
+            Err(e) => panic!("{ctx}: {e:?}"),
+        }
+    }
+
+    /// Unwrap a [`Result::Err`] or panic with context. Replaces
+    /// [`Result::expect_err`] in tests (`clippy::expect_used`).
+    fn unwrap_err_or_panic<T: std::fmt::Debug, E>(result: Result<T, E>, ctx: &str) -> E {
+        match result {
+            Err(e) => e,
+            Ok(v) => panic!("{ctx}: expected Err, got Ok({v:?})"),
+        }
+    }
+
     fn armed_guard_with_container(name: &str) -> SafetyGuard {
         let mut g = SafetyGuard::new();
         g.allow_container(name);
-        g.arm_for_test(true).expect("arm_for_test")
+        unwrap_or_panic(g.arm_for_test(true), "arm_for_test")
     }
 
     fn plan(payload: serde_json::Value) -> FaultPlan {
@@ -685,9 +722,9 @@ mod tests {
         fn calls(&self) -> u64 {
             self.pauses.load(Ordering::Relaxed)
                 + self.unpauses.load(Ordering::Relaxed)
-                + self.kills.lock().unwrap().len() as u64
-                + self.stops.lock().unwrap().len() as u64
-                + self.restarts.lock().unwrap().len() as u64
+                + lock_or_recover(&self.kills).len() as u64
+                + lock_or_recover(&self.stops).len() as u64
+                + lock_or_recover(&self.restarts).len() as u64
         }
     }
 
@@ -701,29 +738,23 @@ mod tests {
             Ok(())
         }
         fn kill(&self, name: &str, signal: &str) -> Result<(), AgentError> {
-            self.kills
-                .lock()
-                .unwrap()
-                .push((name.to_owned(), signal.to_owned()));
+            lock_or_recover(&self.kills).push((name.to_owned(), signal.to_owned()));
             Ok(())
         }
         fn stop(&self, name: &str, grace_seconds: u32) -> Result<(), AgentError> {
-            self.stops
-                .lock()
-                .unwrap()
-                .push((name.to_owned(), grace_seconds));
+            lock_or_recover(&self.stops).push((name.to_owned(), grace_seconds));
             Ok(())
         }
         fn restart(&self, name: &str) -> Result<(), AgentError> {
-            self.restarts.lock().unwrap().push(name.to_owned());
+            lock_or_recover(&self.restarts).push(name.to_owned());
             Ok(())
         }
         fn container_cgroup_path(&self, name: &str) -> Result<String, AgentError> {
-            self.cgroup_paths.lock().unwrap().push(name.to_owned());
+            lock_or_recover(&self.cgroup_paths).push(name.to_owned());
             Ok(name.to_owned())
         }
         fn container_netns_path(&self, name: &str) -> Result<String, AgentError> {
-            self.netns_paths.lock().unwrap().push(name.to_owned());
+            lock_or_recover(&self.netns_paths).push(name.to_owned());
             Ok(format!("/proc/self/root/proc/{name}/ns/net"))
         }
     }
@@ -765,7 +796,7 @@ mod tests {
             ),
         ];
         for (payload, expected) in cases {
-            let parsed = ContainerAction::from_payload(&payload).expect("parse");
+            let parsed = unwrap_or_panic(ContainerAction::from_payload(&payload), "parse");
             assert_eq!(parsed, expected);
         }
     }
@@ -773,21 +804,21 @@ mod tests {
     #[test]
     fn from_payload_rejects_unknown_kind() {
         let payload = serde_json::json!({"kind": "evict", "name": "web"});
-        let err = ContainerAction::from_payload(&payload).expect_err("should reject");
+        let err = unwrap_err_or_panic(ContainerAction::from_payload(&payload), "should reject");
         assert!(matches!(err, AgentError::InvalidPlan { .. }));
     }
 
     #[test]
     fn from_payload_rejects_missing_name() {
         let payload = serde_json::json!({"kind": "pause"});
-        let err = ContainerAction::from_payload(&payload).expect_err("should reject");
+        let err = unwrap_err_or_panic(ContainerAction::from_payload(&payload), "should reject");
         assert!(matches!(err, AgentError::InvalidPlan { .. }));
     }
 
     #[test]
     fn from_payload_rejects_non_object() {
         let payload = serde_json::json!("just a string");
-        let err = ContainerAction::from_payload(&payload).expect_err("should reject");
+        let err = unwrap_err_or_panic(ContainerAction::from_payload(&payload), "should reject");
         assert!(matches!(err, AgentError::InvalidPlan { .. }));
     }
 
@@ -796,12 +827,13 @@ mod tests {
         let client = RecordingClient::default();
         let adapter = DockerAdapter::with_client(Box::new(client));
         let guard = SafetyGuard::new();
-        let applied = adapter
-            .apply(
+        let applied = unwrap_or_panic(
+            adapter.apply(
                 &plan(serde_json::json!({"kind": "pause", "name": "web"})),
                 &guard,
-            )
-            .expect("dry-run");
+            ),
+            "dry-run",
+        );
         assert!(applied.dry_run);
     }
 
@@ -811,7 +843,7 @@ mod tests {
         let adapter = DockerAdapter::with_client(Box::new(client));
         let guard = armed_guard_with_container("web");
         let p = plan(serde_json::json!({"kind": "pause", "name": "other"}));
-        let err = adapter.apply(&p, &guard).expect_err("should reject");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &guard), "should reject");
         assert!(matches!(
             err,
             AgentError::TargetNotAllowed {
@@ -827,9 +859,10 @@ mod tests {
         let adapter = DockerAdapter::with_client(Box::new(client));
         let guard = armed_guard_with_container("web");
         let p = plan(serde_json::json!({"kind": "pause", "name": "web"}));
-        let applied = adapter
-            .apply(&p, &guard)
-            .expect("apply should succeed for allowlisted target");
+        let applied = unwrap_or_panic(
+            adapter.apply(&p, &guard),
+            "apply should succeed for allowlisted target",
+        );
         assert!(!applied.dry_run);
     }
 
@@ -841,10 +874,13 @@ mod tests {
         );
         let guard = armed_guard_with_container("web");
         let p = plan(serde_json::json!({"kind": "kill", "name": "web", "signal": "SIGHUP"}));
-        adapter.apply(&p, &guard).expect("apply");
-        let kills = client.kills.lock().unwrap();
-        assert_eq!(kills.len(), 1);
-        assert_eq!(kills[0], ("web".to_owned(), "SIGHUP".to_owned()));
+        unwrap_or_panic(adapter.apply(&p, &guard), "apply");
+        let kills_len = lock_or_recover(&client.kills).len();
+        assert_eq!(kills_len, 1);
+        let first_kill = lock_or_recover(&client.kills)
+            .first()
+            .map_or_else(|| panic!("no kills recorded"), Clone::clone);
+        assert_eq!(first_kill, ("web".to_owned(), "SIGHUP".to_owned()));
     }
 
     #[test]
@@ -855,10 +891,13 @@ mod tests {
         );
         let guard = armed_guard_with_container("web");
         let p = plan(serde_json::json!({"kind": "stop", "name": "web", "grace_seconds": 7}));
-        adapter.apply(&p, &guard).expect("apply");
-        let stops = client.stops.lock().unwrap();
-        assert_eq!(stops.len(), 1);
-        assert_eq!(stops[0], ("web".to_owned(), 7));
+        unwrap_or_panic(adapter.apply(&p, &guard), "apply");
+        let stops_len = lock_or_recover(&client.stops).len();
+        assert_eq!(stops_len, 1);
+        let first_stop = lock_or_recover(&client.stops)
+            .first()
+            .map_or_else(|| panic!("no stops recorded"), Clone::clone);
+        assert_eq!(first_stop, ("web".to_owned(), 7));
     }
 
     #[test]
@@ -867,12 +906,10 @@ mod tests {
         let adapter = DockerAdapter::with_client(
             Box::new(std::sync::Arc::clone(&client)) as Box<dyn DockerClient>
         );
-        let path = adapter
-            .client
-            .container_cgroup_path("web")
-            .expect("cgroup path");
+        let path = unwrap_or_panic(adapter.client.container_cgroup_path("web"), "cgroup path");
         assert_eq!(path, "web");
-        assert_eq!(client.cgroup_paths.lock().unwrap().len(), 1);
+        let cgroup_len = lock_or_recover(&client.cgroup_paths).len();
+        assert_eq!(cgroup_len, 1);
     }
 
     #[test]
@@ -881,12 +918,10 @@ mod tests {
         let adapter = DockerAdapter::with_client(
             Box::new(std::sync::Arc::clone(&client)) as Box<dyn DockerClient>
         );
-        let path = adapter
-            .client
-            .container_netns_path("abc123")
-            .expect("netns path");
+        let path = unwrap_or_panic(adapter.client.container_netns_path("abc123"), "netns path");
         assert_eq!(path, "/proc/self/root/proc/abc123/ns/net");
-        assert_eq!(client.netns_paths.lock().unwrap().len(), 1);
+        let netns_len = lock_or_recover(&client.netns_paths).len();
+        assert_eq!(netns_len, 1);
     }
 
     #[test]
@@ -901,7 +936,7 @@ mod tests {
             dry_run: false,
             description: "applied container_pause to container `web`".to_owned(),
         };
-        adapter.revert(&applied).expect("revert");
+        unwrap_or_panic(adapter.revert(&applied), "revert");
         assert_eq!(client.unpauses.load(Ordering::Relaxed), 1);
     }
 
@@ -917,7 +952,7 @@ mod tests {
             dry_run: false,
             description: "applied container_unpause to container `web`".to_owned(),
         };
-        adapter.revert(&applied).expect("revert");
+        unwrap_or_panic(adapter.revert(&applied), "revert");
         assert_eq!(client.pauses.load(Ordering::Relaxed), 1);
     }
 
@@ -931,7 +966,7 @@ mod tests {
             dry_run: false,
             description: "applied container_kill to container `web`".to_owned(),
         };
-        adapter.revert(&applied).expect("revert should be no-op");
+        unwrap_or_panic(adapter.revert(&applied), "revert should be no-op");
     }
 
     #[test]
@@ -944,7 +979,7 @@ mod tests {
             dry_run: true,
             description: "would container_pause container `web` (unarmed guard)".to_owned(),
         };
-        adapter.revert(&applied).expect("revert should be no-op");
+        unwrap_or_panic(adapter.revert(&applied), "revert should be no-op");
     }
 
     #[test]
@@ -962,9 +997,10 @@ mod tests {
             ),
         ];
         for (desc, expected_kind, expected_name) in cases {
-            let (kind, name) = parse_revert_description(desc).expect("parse");
-            assert_eq!(kind, expected_kind);
-            assert_eq!(name, expected_name);
+            let parsed = parse_revert_description(desc)
+                .unwrap_or_else(|| panic!("parse failed for {desc:?}"));
+            assert_eq!(parsed.0, expected_kind);
+            assert_eq!(parsed.1, expected_name);
         }
     }
 
@@ -982,7 +1018,7 @@ mod tests {
         let adapter = DockerAdapter::default();
         let guard = armed_guard_with_container("web");
         let p = plan(serde_json::json!({"kind": "pause", "name": "web"}));
-        let applied = adapter.apply(&p, &guard).expect("apply");
+        let applied = unwrap_or_panic(adapter.apply(&p, &guard), "apply");
         assert!(!applied.dry_run);
     }
 }
