@@ -1,6 +1,6 @@
 [package]
 name = "malcolm-agent"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Optional out-of-process fault adapters for malcolm — real OS side effects behind a SafetyGuard"
@@ -32,8 +32,8 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
 [dependencies]
-malcolm = { path = "../malcolm", version = "0.6.0" }
-malcolm-core = { path = "../malcolm-core", version = "0.6.0" }
+malcolm = { path = "../malcolm", version = "0.7.0" }
+malcolm-core = { path = "../malcolm-core", version = "0.7.0" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

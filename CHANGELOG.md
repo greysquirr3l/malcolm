@@ -1,6 +1,138 @@
-# Changelog
+## [0.7.0] - 2026-08-01
 
-All notable changes to this project are documented in this file.
+This release rolls up two complete capability rollouts: **Phase 9 (T26–T32)
+observability** and **Phase 12 (T39–T42) Bayesian chaos**, plus criterion
+benchmarks for the new math primitives. No breaking changes to the
+public `malcolm` API; the new math types are additive modules under
+`malcolm_core`. Per the release commit history this rolls PR #40
+("bench: criterion benches for Phase 12 Bayesian chaos and Hawkes")
+plus its predecessor PR #31 ("feat(metrics): add MetricsRecorder seam
+and scenario metric emission") into a single 0.7.0 line.
+
+### Added
+
+#### Phase 9 — Observability (T26–T32)
+
+- **`malcolm::metrics` seam (T26)** — in-process observability port:
+  `MetricsRecorder` trait (`Send + Sync`, single `record(&MetricSample)`
+  method), `NoopRecorder` default, `MetricsHub` fan-out
+  (clonable, builder-style `with_recorder` / `with_recorders`, hubs
+  nest), and the canonical metric taxonomy as `pub const` strings
+  (`malcolm_faults_injected_total`, `malcolm_faults_skipped_total`,
+  `malcolm_fault_intensity`, `malcolm_fault_latency_ms`,
+  `malcolm_scenario_duration_ms`). `MetricKind { Counter, Gauge,
+  Histogram }` and `MetricUnit { Count, Milliseconds, Ratio, Bytes }`
+  round out the typed sample shape.
+- **Scenario wiring** — `ChaosScenario::run_with_metrics(&mut ctx,
+  &MetricsHub)` walks every fault and emits the corresponding samples,
+  plus a duration histogram for the whole scenario. The pre-existing
+  `ChaosScenario::run(&mut ctx)` is now a thin wrapper that calls
+  `run_with_metrics` with an empty hub, so behavior is byte-identical
+  to a build without metrics when no recorder is installed.
+- **Prometheus exporter (T27)** — feature-gated via
+  `--features prometheus`. Counters and gauges expose the canonical
+  names with `fault_type`, `node_id`, `scenario`, `regime`, `dry_run`,
+  `skip_reason` labels; histograms expose `_bucket`, `_sum`, `_count`
+  in standard Prometheus format. Unknown metric names log a
+  `tracing::warn!` once per recorder lifetime and skip the sample.
+- **OpenTelemetry / OTLP exporter (T28)** — feature-gated via
+  `--features otel` (plus `otel-grpc` or `otel-http` for the wire
+  protocol). Translates the canonical taxonomy to OTel metric streams;
+  OTLP gRPC and HTTP exporters wired through `opentelemetry-otlp`.
+- **StatsD / Datadog exporter (T29)** — feature-gated via
+  `--features statsd`. DogStatsD extension tags for the histogram
+  percentile distribution. Multiplexed UDP/Unix socket support for
+  the local agent; `dogstatsd_non_local_traffic: true` documented in
+  `docs/metrics.md` for the cross-host case.
+- **Resilience budget assertions (T30)** — `malcolm::assertions`
+  module: `assert_loss_below`, `assert_p99_below`, `assert_recovery_rate`
+  per-scenario, plus `assertions::run` for bundled budgets. CI gates
+  fail the scenario if any budget is missed.
+- **JUnit + SARIF reports (T31)** — `malcolm::report_formats` writes
+  `report.junit.xml` and `report.sarif.json` alongside the existing
+  JSON and YAML outputs. SARIF is severity-graded and integrates with
+  the GitHub Code Scanning dashboard.
+- **CI/CD templates (T32)** — `.github/workflows/resilience.yml`
+  (`malcolm-resilience` action), `.github/instructions/mermaid.instructions.md`,
+  `scripts/resilience-gate.sh`, `ci/budget.toml`, and `ci/malcolm-resilience.gitlab-ci.yml`
+  for self-hosted runners. All templates consume the same canonical
+  metric names so dashboards stay in sync across CI providers.
+
+#### Phase 12 — Bayesian chaos (T39–T42)
+
+- **`malcolm_core::inference` (T39)** — Bayesian cascade network
+  inference over the failure graph. Noisy-OR marginals with
+  blast-radius distributions; analytically tractable companion to the
+  T12 sampler, deterministic on identical inputs.
+- **`malcolm_core::posterior` + `malcolm::rootcause` (T40)** —
+  Bayesian root-cause posterior. `OriginPrior`, `Observation`,
+  `infer_posterior` operate in log-space with log-sum-exp for
+  numerical stability and partial-observation marginalisation.
+  `RootCauseConfig` + `RootCauseReport` in `malcolm::rootcause` with
+  serde round-trip and a `BayesianCascade` adapter in
+  `malcolm::topology`.
+- **`malcolm::search` (T41, feature-gated `bayesopt`)** —
+  Bayesian-optimized adaptive fault search. `Objective` trait as the
+  domain seam, `SearchSpace` for continuous and integer dimensions,
+  `FaultConfig`, `SearchConfig`, `SearchResult`, `bayes_search()`.
+  Backend: `egobox-ego 0.38` (EGO loop + Kriging + EI infill),
+  `ndarray 0.16`, pure-Rust `linfa-linalg`. Per-call `TraceBuf`
+  (`Arc<TraceBuf>`) so concurrent searches don't stomp each other.
+- **`malcolm_core::hawkes` (T42)** — Hawkes conditional-intensity
+  process for clustered fault arrivals. `HawkesProcess { mu, alpha,
+  beta }` with parameter validation, `branching_ratio`, `is_stationary`,
+  `long_run_rate`, `intensity_at`, `intensity_incremental`, `apply_event`,
+  and `simulate` (Ogata thinning, deterministic via seed).
+
+#### Benchmarks and examples
+
+- **Criterion benchmarks** for every new math primitive:
+  `crates/malcolm-core/benches/hawkes.rs` (7 benchmarks) and
+  `crates/malcolm/benches/bayesian_chaos.rs` (8 benchmarks). Baseline
+  JSONs under `benches/baselines/<fn>/myref/` enable regression
+  detection via `scripts/check_bench_regressions.sh`.
+- **Four worked examples** under `crates/malcolm/examples/`:
+  `cascade_inference` (T39), `root_cause_analysis` (T40),
+  `hawkes_arrivals` (T42), `bayesopt_search` (T41, behind
+  `--features bayesopt`).
+- **Visualised benchmark outputs**: 12 SVG charts under
+  `assets/img/bench/` plus a `docs/book/src/benchmarks.md` mdbook page
+  explaining how to read the typical-time / regression-plot pair per
+  function.
+
+### Changed
+
+- **Workspace crate versions all bumped to 0.7.0** — `malcolm-core`,
+  `malcolm`, `malcolm-lens`, `malcolm-agent`. Cross-crate dependencies
+  in the workspace `Cargo.toml` files reference the new 0.7.0 version
+  where appropriate (malcolm depends on malcolm-core, malcolm-agent
+  depends on both, malcolm-lens depends on malcolm).
+- **CI workflow hardening** — `.github/workflows/release.yml`:
+  split the combined `uses:` + `run:` step in the `github-release` job
+  into a checkout step + an `id: notes` shell step (the malformed
+  YAML caused GitHub to bypass the `push: tags: v*` filter and fire
+  release.yml on every branch push). Markdownlint config moved from
+  `.markdownlintignore` to a structured `.markdownlint-cli2.jsonc`
+  that excludes `.vscode/`, `tasks/`, `.coraline/`, `target/`, and
+  other non-user-facing working directories; the existing 11 long-
+  standing MD022/MD032/MD034 issues in
+  `.github/instructions/mermaid.instructions.md` are fixed at the
+  same time.
+- **`infer_posterior` and `RootCauseConfig::new`** now carry
+  `#[must_use]` so CI's `cargo clippy --workspace --all-targets
+  -- -D warnings` (which promotes pedantic `clippy::must_use_candidate`
+  to error via `-D warnings`) passes.
+
+### Fixed
+
+- **Doctest regression in `malcolm_core::hawkes`** — the module-level
+  docstring example was using `unwrap_or_panic`, a private test
+  helper not in scope at doctest time. Replaced with `.unwrap()`.
+- **Markdownlint regressions in `PROGRESS.md` and `README.md`** —
+  stray `|` inside a table cell that broke MD056 column count, and a
+  multi-blank-line run before `## License` that tripped MD012.
+- **Malformed `release.yml` workflow** — see "Changed" above; the
+  fix is what kept release.yml off the branch-push trigger.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
