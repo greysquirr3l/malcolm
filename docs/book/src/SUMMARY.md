@@ -8,5 +8,6 @@
 - [Sealed Envelopes](sealed-envelopes.md)
 - [Lens Guide](lens-guide.md)
 - [Tracing and Observability](tracing-observability.md)
+- [Benchmarks](benchmarks.md)
 - [Release and Publish](release-and-publish.md)
 - [Contributing](contributing.md)
