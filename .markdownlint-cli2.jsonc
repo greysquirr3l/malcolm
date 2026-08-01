@@ -1,0 +1,23 @@
+{
+  "config": {
+    "default": true
+  },
+  "globs": [
+    "**/*.md",
+    "#book/**/*.html",
+    "#node_modules/**/*.md",
+    "!.vscode/**/*.md",
+    "!tasks/**/*.md",
+    "!.coraline/**/*.md"
+  ],
+  "ignores": [
+    ".vscode/**/*.md",
+    "tasks/**/*.md",
+    ".coraline/**/*.md",
+    "target/**/*.md",
+    "book/**/*.md",
+    "docs/book/book/**/*.md",
+    "node_modules/**/*.md",
+    "reference_projects/**/*.md"
+  ]
+}
