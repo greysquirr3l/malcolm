@@ -513,13 +513,13 @@ impl BayesianCascade {
     /// directly. Useful for tests and for callers who want to
     /// inject leak probabilities or non-topology sources.
     #[must_use]
-    pub fn from_graph(graph: FailureGraph) -> Self {
+    pub const fn from_graph(graph: FailureGraph) -> Self {
         Self { graph }
     }
 
     /// Borrow the underlying failure graph.
     #[must_use]
-    pub fn graph(&self) -> &FailureGraph {
+    pub const fn graph(&self) -> &FailureGraph {
         &self.graph
     }
 
@@ -588,13 +588,13 @@ pub struct BayesianReport {
 impl BayesianReport {
     /// True if the marginals were computed exactly (DAG fast path).
     #[must_use]
-    pub fn is_exact(&self) -> bool {
+    pub const fn is_exact(&self) -> bool {
         self.marginals.is_exact()
     }
 
     /// True if the blast-radius distribution was computed exactly.
     #[must_use]
-    pub fn is_exact_blast_radius(&self) -> bool {
+    pub const fn is_exact_blast_radius(&self) -> bool {
         self.blast_radius.is_exact()
     }
 
