@@ -120,7 +120,7 @@ jobs:
       - name: Install mdBook
         uses: taiki-e/install-action@05829426d56c23290286f25dac53f536b618027b # v2.4.0
         with:
-          tool: mdbook@0.4.43,mdbook-mermaid@0.17.0
+          tool: mdbook@0.5.4,mdbook-mermaid@0.17.0
 
       - name: Build handbook
         run: mdbook build docs/book
