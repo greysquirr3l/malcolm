@@ -97,7 +97,9 @@ impl FailureGraph {
         let n = node.into();
         if !self.nodes.contains(&n) {
             // Maintain sorted order on insert for determinism.
-            let pos = self.nodes.binary_search(&n).unwrap_err();
+            // `partition_point` returns the insertion index
+            // directly (it's `Err(...)` of `binary_search`).
+            let pos = self.nodes.partition_point(|x| x < &n);
             self.nodes.insert(pos, n.clone());
         }
         self.parents.entry(n).or_default();
@@ -335,14 +337,11 @@ impl FailureGraph {
             // 1 − w · (1 − Π_{other parents j of child}(1 − w_j · m_{j->child})).
             for (parent, children) in &self.parents {
                 for (child, edge_w) in children {
-                    let updated = if let Some(c) = clamped.get(parent).copied() {
-                        // Clamped parents: the message is just the
-                        // clamped value (0 or 1).
-                        c
-                    } else {
-                        // `m_{parent->child}` — find all *other*
-                        // parents of `child` and combine their
-                        // messages.
+                    // Clamped parents: the message is just the
+                    // clamped value (0 or 1). Otherwise compute
+                    // `m_{parent->child}` from the *other*
+                    // parents' messages.
+                    let updated = clamped.get(parent).copied().unwrap_or_else(|| {
                         let mut other_not_f = 1.0;
                         if let Some(child_parents) = self.parents.get(child) {
                             for (other_parent, other_w) in child_parents {
@@ -356,10 +355,11 @@ impl FailureGraph {
                                 other_not_f *= 1.0 - other_w * m;
                             }
                         }
-                        // `m_{parent->child} = 1 − w · other_not_f`.
-                        // Clamp into [0, 1] for safety.
+                        // `m_{parent->child} = 1 − w ·
+                        // other_not_f`. Clamp into [0, 1] for
+                        // safety.
                         (1.0 - edge_w * other_not_f).clamp(0.0, 1.0)
-                    };
+                    });
                     messages.insert((parent.clone(), child.clone()), updated);
                 }
             }
@@ -388,16 +388,13 @@ impl FailureGraph {
                 };
             }
         }
-        // DEBUG: print last_messages
         // Compute marginals from the converged messages using the
         // same noisy-OR factorisation: for each node,
         // P(failed) = 1 − (1 − leak) · Π_parents(1 − w · m_{parent->node}).
         let mut marginals: BTreeMap<NodeId, f64> = BTreeMap::new();
         for node in &self.nodes {
             let leak = self.leak_of(node);
-            let p = if let Some(c) = clamped.get(node).copied() {
-                c
-            } else {
+            let p = clamped.get(node).copied().unwrap_or_else(|| {
                 let parents = self.parents_of(node);
                 if parents.is_empty() {
                     leak
@@ -412,7 +409,7 @@ impl FailureGraph {
                     }
                     (1.0 - not_f).clamp(0.0, 1.0)
                 }
-            };
+            });
             marginals.insert(node.clone(), p);
         }
         MarginalResult::Approximate { marginals, outcome }
@@ -477,17 +474,26 @@ impl FailureGraph {
         if max_in_degree <= 1 && n > 0 {
             // Forest: exact DP convolution.
             let mut dist = vec![0.0_f64; n + 1];
-            dist[0] = 1.0;
+            // `n + 1` slots, index 0 is in bounds; use
+            // `get_mut` to satisfy `clippy::indexing_slicing`.
+            if let Some(slot) = dist.get_mut(0) {
+                *slot = 1.0;
+            }
             for (_node, p) in &p_vec {
                 let p = *p;
                 let mut new_dist = vec![0.0_f64; n + 1];
                 for k in 0..=n {
-                    if dist[k] == 0.0 {
-                        continue;
+                    let d = match dist.get(k) {
+                        Some(&v) if v != 0.0 => v,
+                        _ => continue,
+                    };
+                    if let Some(slot) = new_dist.get_mut(k) {
+                        *slot += d * (1.0 - p);
                     }
-                    new_dist[k] += dist[k] * (1.0 - p);
                     if k < n {
-                        new_dist[k + 1] += dist[k] * p;
+                        if let Some(slot) = new_dist.get_mut(k + 1) {
+                            *slot += d * p;
+                        }
                     }
                 }
                 dist = new_dist;
@@ -517,7 +523,12 @@ impl FailureGraph {
                         k += 1;
                     }
                 }
-                counts[k] += 1;
+                // `k ≤ n` so `counts.get_mut(k)` is in
+                // bounds; use `get_mut` to satisfy
+                // `clippy::indexing_slicing`.
+                if let Some(slot) = counts.get_mut(k) {
+                    *slot += 1;
+                }
             }
             #[allow(clippy::cast_precision_loss)]
             let distribution: Vec<f64> = counts
@@ -545,11 +556,12 @@ impl FailureGraph {
     }
 }
 
-/// Clamping: pin a set of nodes to fixed probabilities. A clamp
-/// value of `1.0` pins the node as "failed" (an origin); a value
-/// of `0.0` pins it as "healthy" (a known-good control). Absent
-/// nodes are free (their probability is determined by the
-/// inference).
+/// Clamping: pin a set of nodes to fixed probabilities.
+///
+/// A clamp value of `1.0` pins the node as "failed" (an
+/// origin); a value of `0.0` pins it as "healthy" (a
+/// known-good control). Absent nodes are free (their
+/// probability is determined by the inference).
 pub type Clamp = BTreeMap<NodeId, f64>;
 
 /// Cycle report from [`FailureGraph::detect_cycles`].
@@ -627,7 +639,7 @@ impl MarginalResult {
 
     /// Borrow the marginal map.
     #[must_use]
-    pub fn map(&self) -> &BTreeMap<NodeId, f64> {
+    pub const fn map(&self) -> &BTreeMap<NodeId, f64> {
         match self {
             Self::Exact(m) | Self::Approximate { marginals: m, .. } => m,
         }
@@ -635,7 +647,7 @@ impl MarginalResult {
 
     /// True if this result is the exact DAG path.
     #[must_use]
-    pub fn is_exact(&self) -> bool {
+    pub const fn is_exact(&self) -> bool {
         matches!(self, Self::Exact(_))
     }
 }
@@ -696,7 +708,7 @@ impl BlastRadiusResult {
     /// the count distribution; for the exact path it equals
     /// `Σ_{k} k · distribution[k]`).
     #[must_use]
-    pub fn expected(&self) -> f64 {
+    pub const fn expected(&self) -> f64 {
         match self {
             Self::Exact {
                 expected_node_count,
@@ -735,7 +747,7 @@ impl BlastRadiusResult {
 
     /// True if this result was computed exactly.
     #[must_use]
-    pub fn is_exact(&self) -> bool {
+    pub const fn is_exact(&self) -> bool {
         matches!(self, Self::Exact { .. })
     }
 }
@@ -778,6 +790,7 @@ fn expected_from_marginals(p_vec: &[(NodeId, f64)]) -> f64 {
     clippy::float_cmp,
     reason = "test assertions on exact computed probabilities"
 )]
+#[expect(clippy::panic, reason = "tests use panic! to assert invariants")]
 mod tests {
     use super::*;
     use alloc::borrow::ToOwned;
@@ -1004,7 +1017,8 @@ mod tests {
         // The second add is a no-op (parent already present), so
         // only one edge with clamped weight 1.0.
         assert_eq!(parents.len(), 1);
-        assert!((parents[0].1 - 1.0).abs() < 1e-12);
+        let first_w = parents.first().map_or(0.0, |(_, w)| *w);
+        assert!((first_w - 1.0).abs() < 1e-12);
     }
 
     #[test]

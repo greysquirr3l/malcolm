@@ -22,4 +22,5 @@ pub mod distributions;
 pub mod inference;
 pub mod lyapunov;
 pub mod noise;
+pub mod posterior;
 pub mod types;

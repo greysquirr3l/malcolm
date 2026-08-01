@@ -40,6 +40,7 @@ pub mod metrics;
 pub mod presets;
 pub mod replay;
 pub mod report_formats;
+pub mod rootcause;
 pub mod scenario;
 pub mod topology;
 pub mod tracing_layer;

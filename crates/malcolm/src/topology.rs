@@ -40,6 +40,11 @@ use serde::{Deserialize, Serialize};
 use malcolm_core::inference::{BlastRadiusResult, Clamp, FailureGraph, MarginalResult};
 use malcolm_core::types::{DryRunReport, FaultResult};
 
+/// Re-export of [`malcolm_core::inference::NodeId`] for the
+/// public API. Topology consumers refer to nodes by `String`;
+/// this alias avoids forcing them to import from `inference`.
+pub use malcolm_core::inference::NodeId as TopologyNodeId;
+
 use crate::fault::{Fault, FaultContext};
 
 /// One directed weighted edge in the topology graph.
@@ -145,6 +150,14 @@ impl Topology {
     #[must_use]
     pub fn to_failure_graph(&self) -> FailureGraph {
         let mut g = FailureGraph::new();
+        // Pull in every node, including isolated ones (no
+        // edges), so the inference graph contains the full
+        // node set. `add_node` is idempotent; subsequent
+        // `add_edge` calls will re-add but that's also a
+        // no-op.
+        for n in self.node_ids() {
+            g.add_node(n);
+        }
         for (from, to, w) in self.edges() {
             g.add_edge(from, to, w);
         }
