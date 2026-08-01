@@ -197,6 +197,7 @@ Concrete exporters plug into this seam behind feature flags:
 | OpenTelemetry / OTLP | `otel`, `otel-grpc`, `otel-http` | shipped (T28) |
 | StatsD / Datadog | `statsd` | planned (T29) |
 
+||||||| parent of aea43d2 (feat(metrics): add MetricsRecorder seam and scenario metric emission (#31))
 ## Worked Examples
 
 Run the examples from `crates/malcolm`:

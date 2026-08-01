@@ -298,3 +298,4 @@ Make sure `dogstatsd_non_local_traffic: true` is set if the agent is on a
 different host, and the listener port (`8125` by default) accepts UDP.
 If the agent is on `127.0.0.1` only, that's the default — no extra config
 needed for local testing.
+||||||| parent of aea43d2 (feat(metrics): add MetricsRecorder seam and scenario metric emission (#31))
