@@ -373,9 +373,6 @@ Sample plots from the current run:
 ![infer_posterior_chain_20 typical](assets/img/bench/infer_posterior_chain_20-typical.svg)
 ![infer_posterior_random_15 typical](assets/img/bench/infer_posterior_random_15-typical.svg)
 
-
-
-
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
