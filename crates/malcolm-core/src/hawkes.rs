@@ -24,7 +24,7 @@
 //! use malcolm_core::hawkes::HawkesProcess;
 //!
 //! // Low background, strong self-excitation, moderate decay.
-//! let p = unwrap_or_panic(HawkesProcess::new(0.1, 1.5, 2.0), "construction");
+//! let p = HawkesProcess::new(0.1, 1.5, 2.0).unwrap();
 //! assert_eq!(p.branching_ratio(), 0.75);
 //! assert!(p.is_stationary());
 //!
