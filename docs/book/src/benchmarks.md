@@ -59,3 +59,31 @@ Sample plots from the current run:
 ![infer_posterior_random_15 typical](../../assets/img/bench/infer_posterior_random_15-typical.svg)
 
 Captured on macOS (Apple Silicon, single-threaded release build, criterion 0.8).
+
+## Regression detection
+
+The `myref` baseline is checked into `benches/baselines/<fn>/myref/` so that
+`scripts/check_bench_regressions.sh` can flag regressions in CI.
+
+```bash
+bash scripts/check_bench_regressions.sh        # default 5% significance
+bash scripts/check_bench_regressions.sh 1     # 1% significance (stricter)
+```
+
+The script stages each baseline into `target/criterion/<fn>/myref/`, re-runs
+the bench with criterion's `--baseline myref`, and greps the output for
+regression lines. Exit code is non-zero if any bench regresses with
+p-value below the configured significance level.
+
+To refresh the baseline after a deliberate change:
+
+```bash
+cargo bench -p malcolm-core --bench hawkes         -- --save-baseline myref
+cargo bench -p malcolm      --bench bayesian_chaos -- --save-baseline myref
+bash scripts/save_bench_baselines.sh
+```
+
+The script's own baseline numbers were captured on macOS (Apple Silicon,
+single-threaded release build). On a CI runner the numbers will differ
+slightly — the script's significance level (default 5%) absorbs that
+run-to-run variance.
