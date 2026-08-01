@@ -52,11 +52,11 @@ The rendered criterion reports include:
 
 Sample plots from the current run:
 
-![marginals_chain_50 typical](../../assets/img/bench/marginals_chain_50-typical.svg)
-![marginals_chain_50 regression](../../assets/img/bench/marginals_chain_50-regression.svg)
+![marginals_chain_50 typical](../assets/img/bench/marginals_chain_50-typical.svg)
+![marginals_chain_50 regression](../assets/img/bench/marginals_chain_50-regression.svg)
 
-![infer_posterior_chain_20 typical](../../assets/img/bench/infer_posterior_chain_20-typical.svg)
-![infer_posterior_random_15 typical](../../assets/img/bench/infer_posterior_random_15-typical.svg)
+![infer_posterior_chain_20 typical](../assets/img/bench/infer_posterior_chain_20-typical.svg)
+![infer_posterior_random_15 typical](../assets/img/bench/infer_posterior_random_15-typical.svg)
 
 Captured on macOS (Apple Silicon, single-threaded release build, criterion 0.8).
 
