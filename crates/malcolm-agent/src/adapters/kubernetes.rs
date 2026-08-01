@@ -52,10 +52,12 @@ use crate::safety::{SafetyGuard, Target};
 /// The adapter's stable kind identifier.
 pub const KIND: &str = "kubernetes";
 
-/// Hard-refused namespace: the K8s control plane itself. Operator
-/// convention: chaos tooling must never target `kube-system` (or
-/// `kube-public` on older clusters). The adapter hard-rejects
-/// this namespace regardless of the allowlist.
+/// Hard-refused namespace: the K8s control plane itself.
+///
+/// Operator convention: chaos tooling must never target
+/// `kube-system` (or `kube-public` on older clusters). The
+/// adapter hard-rejects this namespace regardless of the
+/// allowlist.
 pub const KUBE_SYSTEM_NAMESPACE: &str = "kube-system";
 
 /// Reference to a single pod. Stable across the pod's lifetime;
@@ -73,13 +75,14 @@ pub struct PodRef {
     pub uid: String,
 }
 
-/// Type alias for the label selector map. We use `BTreeMap`
-/// (standard library) rather than `serde_json::Map` because the
-/// latter's `Eq`/`PartialEq`/`Debug`/`Clone` impls are
-/// feature-gated in some `serde_json` versions, and K8s label
-/// selectors are inherently ordered (or at least, ordering is
-/// observable in the trait surface), so `BTreeMap` is the
-/// natural choice.
+/// Type alias for the label selector map.
+///
+/// We use `BTreeMap` (standard library) rather than
+/// `serde_json::Map` because the latter's
+/// `Eq`/`PartialEq`/`Debug`/`Clone` impls are feature-gated
+/// in some `serde_json` versions, and K8s label selectors are
+/// inherently ordered (or at least, ordering is observable in
+/// the trait surface), so `BTreeMap` is the natural choice.
 pub type LabelSelector = BTreeMap<String, String>;
 
 impl PodRef {
@@ -129,7 +132,7 @@ impl TargetSpec {
     /// Stable identifier for the spec, used in tracing events and
     /// the `AppliedFault::description`.
     #[must_use]
-    pub fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> &'static str {
         match self {
             Self::Pod { .. } => "pod",
             Self::LabelSelector { .. } => "label_selector",
@@ -159,7 +162,7 @@ impl PodAction {
     /// Stable identifier for the action, used in tracing events
     /// and the `AppliedFault::description`.
     #[must_use]
-    pub fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> &'static str {
         match self {
             Self::Delete { .. } => "pod_delete",
             Self::Evict { .. } => "pod_evict",
@@ -168,7 +171,7 @@ impl PodAction {
 
     /// Reference to the action's target spec.
     #[must_use]
-    pub fn target(&self) -> &TargetSpec {
+    pub const fn target(&self) -> &TargetSpec {
         match self {
             Self::Delete { target } | Self::Evict { target } => target,
         }
@@ -298,10 +301,11 @@ impl Default for BlastRadius {
 }
 
 /// Trait abstracting the K8s API operations the adapter needs.
-/// The real implementation would wrap `kube::Client`; the skeleton
-/// ships with [`MockKubeClient`] for tests. The trait is
-/// deliberately narrow (3 methods) per the AGENTS.md "narrow
-/// port trait" rule.
+///
+/// The real implementation would wrap `kube::Client`; the
+/// skeleton ships with [`MockKubeClient`] for tests. The trait
+/// is deliberately narrow (3 methods) per the AGENTS.md
+/// "narrow port trait" rule.
 pub trait KubeClient: Send + Sync + std::fmt::Debug {
     /// List the pods that a `LabelSelector` would match. The
     /// `LabelSelector` targets are in a single namespace per call.
@@ -603,6 +607,7 @@ impl<T: KubeClient + ?Sized> KubeClient for &T {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "tests use panic! to assert invariants")]
 mod tests {
     use super::*;
     use std::sync::Mutex;
@@ -632,6 +637,38 @@ mod tests {
         }
     }
 
+    /// Lock a [`Mutex`], recovering from poisoning. A poisoned
+    /// mutex in a test indicates another thread panicked while
+    /// holding the lock; we still take the guard so the test can
+    /// finish and report its original panic. Avoids
+    /// `clippy::unwrap_used`.
+    fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+        match m.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    /// Unwrap a [`Result`] or panic with context. Replaces
+    /// [`Result::expect`] in tests (`clippy::expect_used`). The
+    /// `ctx` argument names the test step so a failure points
+    /// at the right call site.
+    fn unwrap_or_panic<T, E: std::fmt::Debug>(result: Result<T, E>, ctx: &str) -> T {
+        match result {
+            Ok(v) => v,
+            Err(e) => panic!("{ctx}: {e:?}"),
+        }
+    }
+
+    /// Unwrap a [`Result::Err`] or panic with context. Replaces
+    /// [`Result::expect_err`] in tests (`clippy::expect_used`).
+    fn unwrap_err_or_panic<T: std::fmt::Debug, E>(result: Result<T, E>, ctx: &str) -> E {
+        match result {
+            Err(e) => e,
+            Ok(v) => panic!("{ctx}: expected Err, got Ok({v:?})"),
+        }
+    }
+
     impl KubeClient for RecordingClient {
         fn list_pods(
             &self,
@@ -639,10 +676,10 @@ mod tests {
             _selector: &LabelSelector,
         ) -> Result<Vec<PodRef>, AgentError> {
             self.list_calls.fetch_add(1, Ordering::Relaxed);
-            Ok(self.seeded_pods.lock().unwrap().clone())
+            Ok(lock_or_recover(&self.seeded_pods).clone())
         }
         fn delete_pod(&self, namespace: &str, name: &str) -> Result<(), AgentError> {
-            self.deletes.lock().unwrap().push(PodRef {
+            lock_or_recover(&self.deletes).push(PodRef {
                 namespace: namespace.to_owned(),
                 name: name.to_owned(),
                 uid: String::new(),
@@ -650,7 +687,7 @@ mod tests {
             Ok(())
         }
         fn evict_pod(&self, namespace: &str, name: &str) -> Result<(), AgentError> {
-            self.evicts.lock().unwrap().push(PodRef {
+            lock_or_recover(&self.evicts).push(PodRef {
                 namespace: namespace.to_owned(),
                 name: name.to_owned(),
                 uid: String::new(),
@@ -662,7 +699,7 @@ mod tests {
     fn armed_guard() -> SafetyGuard {
         let mut g = SafetyGuard::new();
         g.allow_container("default");
-        g.arm_for_test(true).expect("arm_for_test")
+        unwrap_or_panic(g.arm_for_test(true), "arm_for_test")
     }
 
     fn permissive_blast_radius() -> BlastRadius {
@@ -729,7 +766,7 @@ mod tests {
             ),
         ];
         for (payload, expected) in cases {
-            let parsed = PodAction::from_payload(&payload).expect("parse");
+            let parsed = unwrap_or_panic(PodAction::from_payload(&payload), "parse");
             assert_eq!(parsed, expected);
         }
     }
@@ -737,14 +774,14 @@ mod tests {
     #[test]
     fn from_payload_rejects_unknown_kind() {
         let payload = serde_json::json!({"kind": "evict", "namespace": "default", "name": "x"});
-        let err = PodAction::from_payload(&payload).expect_err("should reject");
+        let err = unwrap_err_or_panic(PodAction::from_payload(&payload), "should reject");
         assert!(matches!(err, AgentError::InvalidPlan { .. }));
     }
 
     #[test]
     fn from_payload_rejects_missing_namespace() {
         let payload = serde_json::json!({"kind": "pod_delete", "name": "x"});
-        let err = PodAction::from_payload(&payload).expect_err("should reject");
+        let err = unwrap_err_or_panic(PodAction::from_payload(&payload), "should reject");
         assert!(matches!(err, AgentError::InvalidPlan { .. }));
     }
 
@@ -755,9 +792,7 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "kube-system", "name": "x"
         }));
-        let err = adapter
-            .apply(&p, &armed_guard())
-            .expect_err("should refuse");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &armed_guard()), "should refuse");
         assert!(matches!(
             err,
             AgentError::TargetNotAllowed {
@@ -774,9 +809,7 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "production", "name": "x"
         }));
-        let err = adapter
-            .apply(&p, &armed_guard())
-            .expect_err("should refuse");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &armed_guard()), "should refuse");
         assert!(matches!(
             err,
             AgentError::TargetNotAllowed {
@@ -799,9 +832,7 @@ mod tests {
             "namespace": "default",
             "selector": selector
         }));
-        let err = adapter
-            .apply(&p, &armed_guard())
-            .expect_err("should refuse");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &armed_guard()), "should refuse");
         assert!(matches!(
             err,
             AgentError::TargetNotAllowed {
@@ -822,10 +853,10 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "default", "name": "x"
         }));
-        let applied = adapter.apply(&p, &guard).expect("dry-run");
+        let applied = unwrap_or_panic(adapter.apply(&p, &guard), "dry-run");
         assert!(applied.dry_run);
         assert_eq!(client.list_calls.load(Ordering::Relaxed), 0);
-        assert_eq!(client.deletes.lock().unwrap().len(), 0);
+        assert_eq!(lock_or_recover(&client.deletes).len(), 0);
     }
 
     #[test]
@@ -838,11 +869,12 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "default", "name": "web-1"
         }));
-        adapter.apply(&p, &armed_guard()).expect("apply");
-        let deletes = client.deletes.lock().unwrap();
-        assert_eq!(deletes.len(), 1);
-        assert_eq!(deletes[0].name, "web-1");
-        assert_eq!(deletes[0].namespace, "default");
+        unwrap_or_panic(adapter.apply(&p, &armed_guard()), "apply");
+        let first_delete = lock_or_recover(&client.deletes)
+            .first()
+            .map_or_else(|| panic!("no deletes recorded"), Clone::clone);
+        assert_eq!(first_delete.name, "web-1");
+        assert_eq!(first_delete.namespace, "default");
     }
 
     #[test]
@@ -855,10 +887,11 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_evict", "namespace": "default", "name": "web-2"
         }));
-        adapter.apply(&p, &armed_guard()).expect("apply");
-        let evicts = client.evicts.lock().unwrap();
-        assert_eq!(evicts.len(), 1);
-        assert_eq!(evicts[0].name, "web-2");
+        unwrap_or_panic(adapter.apply(&p, &armed_guard()), "apply");
+        let first_evict = lock_or_recover(&client.evicts)
+            .first()
+            .map_or_else(|| panic!("no evicts recorded"), Clone::clone);
+        assert_eq!(first_evict.name, "web-2");
     }
 
     #[test]
@@ -876,11 +909,14 @@ mod tests {
             "namespace": "default",
             "selector": selector
         }));
-        adapter.apply(&p, &armed_guard()).expect("apply");
+        unwrap_or_panic(adapter.apply(&p, &armed_guard()), "apply");
         assert_eq!(client.list_calls.load(Ordering::Relaxed), 1);
-        let deletes = client.deletes.lock().unwrap();
-        assert_eq!(deletes.len(), 2);
-        let names: Vec<_> = deletes.iter().map(|p| p.name.clone()).collect();
+        let deletes_len = lock_or_recover(&client.deletes).len();
+        assert_eq!(deletes_len, 2);
+        let names: Vec<String> = lock_or_recover(&client.deletes)
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
         assert!(names.contains(&"a".to_owned()));
         assert!(names.contains(&"b".to_owned()));
     }
@@ -899,10 +935,11 @@ mod tests {
             "namespace": "default",
             "selector": selector
         }));
-        adapter.apply(&p, &armed_guard()).expect("apply");
-        let evicts = client.evicts.lock().unwrap();
-        assert_eq!(evicts.len(), 1);
-        assert_eq!(evicts[0].name, "x");
+        unwrap_or_panic(adapter.apply(&p, &armed_guard()), "apply");
+        let first_evict = lock_or_recover(&client.evicts)
+            .first()
+            .map_or_else(|| panic!("no evicts recorded"), Clone::clone);
+        assert_eq!(first_evict.name, "x");
     }
 
     #[test]
@@ -919,11 +956,9 @@ mod tests {
             "namespace": "default",
             "selector": selector
         }));
-        adapter
-            .apply(&p, &armed_guard())
-            .expect("apply (no matches)");
-        let deletes = client.deletes.lock().unwrap();
-        assert_eq!(deletes.len(), 0);
+        unwrap_or_panic(adapter.apply(&p, &armed_guard()), "apply (no matches)");
+        let deletes_len = lock_or_recover(&client.deletes).len();
+        assert_eq!(deletes_len, 0);
     }
 
     #[test]
@@ -936,7 +971,7 @@ mod tests {
             dry_run: false,
             description: "applied pod_delete on pod".to_owned(),
         };
-        adapter.revert(&applied).expect("revert should be no-op");
+        unwrap_or_panic(adapter.revert(&applied), "revert should be no-op");
     }
 
     #[test]
@@ -949,7 +984,7 @@ mod tests {
             dry_run: true,
             description: "would pod_delete on pod (unarmed guard)".to_owned(),
         };
-        adapter.revert(&applied).expect("revert should be no-op");
+        unwrap_or_panic(adapter.revert(&applied), "revert should be no-op");
     }
 
     #[test]
@@ -958,9 +993,7 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "default", "name": "x"
         }));
-        let err = adapter
-            .apply(&p, &armed_guard())
-            .expect_err("should refuse");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &armed_guard()), "should refuse");
         // The default blast radius has an empty namespace
         // allowlist, so the namespace check fires first. Either
         // rejection path proves the default adapter is safe.
@@ -986,9 +1019,7 @@ mod tests {
         let p = plan(serde_json::json!({
             "kind": "pod_delete", "namespace": "kube-system", "name": "x"
         }));
-        let err = adapter
-            .apply(&p, &armed_guard())
-            .expect_err("should refuse");
+        let err = unwrap_err_or_panic(adapter.apply(&p, &armed_guard()), "should refuse");
         assert!(matches!(
             err,
             AgentError::TargetNotAllowed {
