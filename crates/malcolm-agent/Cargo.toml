@@ -62,7 +62,7 @@ rand = { version = "0.10", optional = true }
 # would ripple through `Cleanup`, the test harness, and the
 # evaluator). Tokio's `rt` + `macros` features are sufficient; we do
 # not enable `time` (no sleeps in the adapter itself).
-bollard = { version = "0.18", optional = true, default-features = false }
+bollard = { version = "0.21", optional = true, default-features = false }
 tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
 # T38 — Kubernetes adapter: skeleton-only on the dev branch.
 # The adapter defines a `KubeClient` trait (see
