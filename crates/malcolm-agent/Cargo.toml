@@ -45,7 +45,7 @@ signal-hook = "0.4"
 # the union of what the `process` and `syscall` adapters use; the
 # dependency is gated behind either feature, so the default
 # build of `malcolm-agent` is the in-process port only.
-nix = { version = "0.29", features = ["signal", "process", "ptrace"], optional = true }
+nix = { version = "0.31", features = ["signal", "process", "ptrace"], optional = true }
 # T37's probability-driven fault injection needs a seeded RNG so a fixed
 # seed reproduces the same inject/skip sequence across runs. Pinned to
 # "0.10" (not the workspace's "0.9") to match `malcolm` and
