@@ -82,6 +82,13 @@ impl StatsdConfig {
     }
 
     /// Read configuration from the standard Datadog env vars.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StatsdError::InvalidPort`] if `DD_DOGSTATSD_PORT` /
+    /// `DD_AGENT_PORT` does not hold a valid `u16`, or
+    /// [`StatsdError::InvalidMaxBytes`] if `MALCOLM_STATSD_MAX_BYTES` is not
+    /// a positive integer.
     pub fn from_env() -> Result<Self, StatsdError> {
         Self::from_lookup(|k| std::env::var(k).ok())
     }
@@ -383,6 +390,12 @@ pub struct StatsdRecorder {
 
 impl StatsdRecorder {
     /// Build a recorder connected to the configured destination.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StatsdRecorderError::InvalidMaxBytes`] if
+    /// `config.max_packet_bytes` is zero, or [`StatsdRecorderError::Resolve`]
+    /// if the configured host and port cannot be resolved to a socket address.
     pub fn with_config(config: StatsdConfig) -> Result<Arc<Self>, StatsdRecorderError> {
         if config.max_packet_bytes == 0 {
             return Err(StatsdRecorderError::InvalidMaxBytes(

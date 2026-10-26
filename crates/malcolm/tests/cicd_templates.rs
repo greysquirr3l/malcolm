@@ -29,15 +29,15 @@ fn workspace_root() -> PathBuf {
 }
 
 /// Read a YAML file from the workspace root and parse it as JSON.
-/// `serde_yaml` produces a `Value` that is structurally a subset of
+/// `serde_norway` produces a `Value` that is structurally a subset of
 /// `serde_json::Value`; we convert via `serde_json::to_value` so we
 /// can use `pointer()` navigation in tests.
 fn parse_workspace_yaml(rel: &str) -> Value {
     let path = workspace_root().join(rel);
     let raw =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    let parsed: serde_yaml::Value =
-        serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("yaml parse {}: {e}", path.display()));
+    let parsed: serde_norway::Value = serde_norway::from_str(&raw)
+        .unwrap_or_else(|e| panic!("yaml parse {}: {e}", path.display()));
     serde_json::to_value(parsed)
         .unwrap_or_else(|e| panic!("yaml→json convert {}: {e}", path.display()))
 }
