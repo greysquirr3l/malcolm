@@ -1861,7 +1861,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "malcolm"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -1889,7 +1889,7 @@ dependencies = [
 
 [[package]]
 name = "malcolm-agent"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bollard",
  "malcolm",
@@ -1907,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "malcolm-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "criterion",
  "libm",
@@ -1917,7 +1917,7 @@ dependencies = [
 
 [[package]]
 name = "malcolm-lens"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "async-trait",
  "malcolm",
@@ -2559,16 +2559,16 @@ dependencies = [
 
 [[package]]
 name = "prometheus"
-version = "0.13.4"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+checksum = "3ca5326d8d0b950a9acd87e6a3f94745394f62e4dae1b1ee22b2bc0c394af43a"
 dependencies = [
  "cfg-if",
  "fnv",
  "lazy_static",
  "memchr",
  "parking_lot",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
