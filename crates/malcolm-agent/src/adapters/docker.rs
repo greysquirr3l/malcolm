@@ -39,15 +39,17 @@
 //! clean: Docker owns container lifecycle, cgroup/netem own the
 //! kernel-level fault mechanisms.
 //!
-//! # bollard 0.18 API notes
+//! # bollard API notes
 //!
-//! The bollard 0.18 async API uses the `bollard::Docker` client with
+//! The bollard async API uses the `bollard::Docker` client with
 //! methods that take `(name, options)` for most operations. The
-//! options types are zero-sized builder structs. We bridge the
-//! async/sync gap by running each call through a dedicated
-//! `tokio::runtime::Runtime` stored on the `BollardClient`, so the
-//! rest of the crate (which is sync) can drive the adapter without
-//! changing the `TargetAdapter` trait shape.
+//! options types live in `bollard::query_parameters` (they moved
+//! out of `bollard::container` in 0.21) and are zero-sized builder
+//! structs. We bridge the async/sync gap by running each call
+//! through a dedicated `tokio::runtime::Runtime` stored on the
+//! `BollardClient`, so the rest of the crate (which is sync) can
+//! drive the adapter without changing the `TargetAdapter` trait
+//! shape.
 
 // Pedantic lints that don't add value for a trait-abstracted
 // adapter like this one (the trait already documents the
@@ -81,7 +83,7 @@ use crate::safety::{SafetyGuard, Target};
 #[cfg(feature = "docker")]
 use bollard::Docker;
 #[cfg(feature = "docker")]
-use bollard::container::{
+use bollard::query_parameters::{
     InspectContainerOptions, KillContainerOptions, RestartContainerOptions, StopContainerOptions,
 };
 #[cfg(feature = "docker")]
@@ -511,23 +513,20 @@ impl DockerClient for BollardClient {
     }
 
     fn kill(&self, name: &str, signal: &str) -> Result<(), AgentError> {
-        // bollard 0.18: `KillContainerOptions<T>` where
-        // `T: Into<String> + Serialize`. We parameterise with
-        // `String` (the validated signal name from the action)
-        // so the bollard serialiser writes the signal to the
-        // `?signal=...` query parameter of the Docker API call.
-        // The adapter's `from_payload` has already rejected
-        // unknown signal names with `InvalidPlan`.
-        let opts: Option<KillContainerOptions<String>> = Some(KillContainerOptions {
+        // bollard 0.21: `KillContainerOptions::signal` is a plain `String`.
+        // The adapter's `from_payload` has already rejected unknown
+        // signal names with `InvalidPlan`.
+        let opts = Some(KillContainerOptions {
             signal: signal.to_owned(),
         });
         self.block_on(async { self.docker.kill_container(name, opts).await })
     }
 
     fn stop(&self, name: &str, grace_seconds: u32) -> Result<(), AgentError> {
-        // bollard 0.18: `StopContainerOptions::t` is `i64` (seconds).
+        // bollard 0.21: `StopContainerOptions::t` is an `Option<i32>` of seconds.
         let opts = StopContainerOptions {
-            t: i64::from(grace_seconds),
+            t: Some(i32::try_from(grace_seconds).unwrap_or(i32::MAX)),
+            ..Default::default()
         };
         self.block_on(async { self.docker.stop_container(name, Some(opts)).await })
     }
