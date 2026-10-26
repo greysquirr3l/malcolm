@@ -1,3 +1,48 @@
+## [0.8.0] - 2026-10-26
+
+This release is a maintenance and dependency-security release. It clears
+the RustSec advisories that were failing the Security Audit gate on
+`main` and on every open Dependabot PR, and it carries the `rig-core`
+0.41 upgrade for the interpretability layer.
+
+One breaking change: the YAML error type in `malcolm::replay` moves from
+`serde_yaml::Error` to `serde_norway::Error`. The YAML wire format is
+unchanged.
+
+### Changed
+
+- **Breaking — `malcolm::replay` YAML error type.** `ScenarioRecord::to_yaml`
+  and `ScenarioRecord::from_yaml` now return `serde_norway::Error` instead of
+  `serde_yaml::Error`. `serde_yaml` is published as `0.9.34+deprecated`
+  ("This project is no longer maintained") and pulls in the unmaintained
+  `unsafe-libyaml`; `serde_norway` is the maintained fork and depends on
+  `unsafe-libyaml-norway`. Callers that only propagate the error with `?` are
+  unaffected; callers that name the type explicitly need to switch crates.
+- **`malcolm-lens` migrates to `rig-core` 0.41.** The completion API is now
+  generic over a `CompletionModel` trait, and `CompletionModel::completion`
+  returns `CompletionResponse<ModelOutput>`. `malcolm-lens` defines the
+  `CompletionModel` trait locally (per the consumer-owned-traits rule) with a
+  `MalcolmModel` adapter, so downstream users can plug in their own model.
+- **Advisory-driven dependency upgrades** — `ctutils` 0.4.6, `h2` 0.4.20,
+  `quinn-proto` 0.11.19, `rustls` 0.23.46, `rustls-webpki` 0.103.16,
+  `webpki-root-certs` and `webpki-roots` 1.0.11, `tokio` 1.54.1, `chacha20`
+  0.10.2 (a yanked version).
+- **Documented advisory ignores.** `.cargo/audit.toml` (new) and `deny.toml`
+  now carry the same ignore list, so `cargo audit` and `cargo deny` agree:
+  - `RUSTSEC-2026-0367/0368/0369` (`zip`) — all three concern the archive
+    *extraction* path (`ZipArchive::extract` / `ZipStreamReader::extract`).
+    `zip` reaches malcolm only through the optional `bayesopt` feature, and
+    `ndarray-npy` reads `.npz` payloads in memory via `by_index` / `by_name`
+    rather than `extract()`, so the vulnerable code is unreachable. The fix
+    ships in `zip >= 9.0.0`; `ndarray-npy` pins `zip ^2` with no compatible
+    release in between.
+  - `RUSTSEC-2025-0141` (`bincode`) and `RUSTSEC-2024-0436` (`paste`) —
+    unmaintained with no patched release, reachable only via `bayesopt`.
+- **Clippy fixes in feature-gated code** — missing `# Errors` sections on
+  `OtelRecorder::force_flush`, `OtelRecorder::shutdown`, `with_otlp_exporter`,
+  `StatsdConfig::from_env`, `StatsdRecorder::with_config` and the three
+  `KubeClient` trait methods; missing `#[must_use]` on `otel_tracing_layer`.
+
 ## [0.7.0] - 2026-08-01
 
 This release rolls up two complete capability rollouts: **Phase 9 (T26–T32)
