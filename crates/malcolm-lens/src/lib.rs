@@ -23,6 +23,7 @@
 //! - [Replay divergence investigation](../examples/lens_divergence.rs)
 
 mod analyzer;
+mod completion;
 mod config;
 mod error;
 mod parser;

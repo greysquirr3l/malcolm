@@ -25,4 +25,24 @@ multiple-versions = "warn"
 wildcards = "allow"
 
 [advisories]
-ignore = []
+# Kept in sync with `.cargo/audit.toml` so the `cargo audit` and
+# `cargo deny` gates agree on the same advisory set. The reasoning for
+# each entry lives in `.cargo/audit.toml`.
+#
+# - RUSTSEC-2026-0367/0368/0369 (zip): symlink and permission handling
+#   in the archive *extraction* path. `zip` reaches us only through the
+#   optional `bayesopt` feature, and `ndarray-npy` reads `.npz` payloads
+#   in memory via `by_index` / `by_name` rather than `extract()`, so the
+#   vulnerable code is unreachable. The fix ships in `zip >= 9.0.0` and
+#   `ndarray-npy` pins `zip ^2` with no compatible release in between.
+# - RUSTSEC-2025-0141 (bincode): unmaintained, no patched release.
+#   Reached only through the optional `bayesopt` feature.
+# - RUSTSEC-2024-0436 (paste): unmaintained build-time proc-macro
+#   helper, no patched release.
+ignore = [
+    { id = "RUSTSEC-2026-0367", reason = "zip extraction path is unreachable; only present under the optional bayesopt feature" },
+    { id = "RUSTSEC-2026-0368", reason = "zip extraction path is unreachable; only present under the optional bayesopt feature" },
+    { id = "RUSTSEC-2026-0369", reason = "zip extraction path is unreachable; only present under the optional bayesopt feature" },
+    { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained with no patched release; only present under the optional bayesopt feature" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained with no patched release" },
+]
