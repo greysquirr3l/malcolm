@@ -454,6 +454,11 @@ impl OtelRecorder {
     /// Flush any pending metric data through the underlying reader. Safe to
     /// call multiple times. Always call before process exit on a short-lived
     /// run; otherwise the last batch may be lost.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OtelRecorderError::Sdk`] if the underlying provider fails to
+    /// flush its pending metrics.
     pub fn force_flush(&self) -> Result<(), OtelRecorderError> {
         self.provider
             .force_flush()
@@ -466,6 +471,11 @@ impl OtelRecorder {
     /// Idempotent at the [`OtelRecorder`] layer: subsequent calls return
     /// `Ok(())` without invoking the underlying SDK shutdown (which would
     /// otherwise return an error on a second call).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OtelRecorderError::Sdk`] if the underlying provider fails to
+    /// shut down.
     pub fn shutdown(&self) -> Result<(), OtelRecorderError> {
         if self.shutdown_called.swap(true, Ordering::AcqRel) {
             return Ok(());
@@ -733,6 +743,7 @@ use tracing_subscriber::filter::Targets;
 /// tracing::info!(target: "malcolm", fault_type = "packet_loss", "span");
 /// # let _ = OtelConfig::default_for_tests();
 /// ```
+#[must_use]
 pub fn otel_tracing_layer(
     provider: &SdkTracerProvider,
 ) -> impl Layer<tracing_subscriber::Registry> {
@@ -790,6 +801,11 @@ mod tracing_tests {
 ///
 /// Call [`OtelRecorder::force_flush`] and [`OtelRecorder::shutdown`] on
 /// the returned recorder before process exit on short-lived CI runs.
+///
+/// # Errors
+///
+/// Returns [`OtelRecorderError`] if the exporter or reader cannot be
+/// constructed for the selected protocol.
 #[cfg(any(feature = "otel-grpc", feature = "otel-http"))]
 pub fn with_otlp_exporter(config: &OtelConfig) -> Result<Arc<OtelRecorder>, OtelRecorderError> {
     use opentelemetry_otlp::MetricExporter;

@@ -289,7 +289,7 @@ impl ResilienceBudget {
                 format: "json",
                 source: Box::new(e),
             }),
-            Some("yaml" | "yml") => serde_yaml::from_str(&raw).map_err(|e| BudgetError::Parse {
+            Some("yaml" | "yml") => serde_norway::from_str(&raw).map_err(|e| BudgetError::Parse {
                 path: path_display,
                 format: "yaml",
                 source: Box::new(e),
@@ -519,11 +519,11 @@ mod tests {
 
         let toml = toml::to_string(&original).expect("serialize toml");
         let json = serde_json::to_string(&original).expect("serialize json");
-        let yaml = serde_yaml::to_string(&original).expect("serialize yaml");
+        let yaml = serde_norway::to_string(&original).expect("serialize yaml");
 
         let from_toml: ResilienceBudget = toml::from_str(&toml).expect("parse toml");
         let from_json: ResilienceBudget = serde_json::from_str(&json).expect("parse json");
-        let from_yaml: ResilienceBudget = serde_yaml::from_str(&yaml).expect("parse yaml");
+        let from_yaml: ResilienceBudget = serde_norway::from_str(&yaml).expect("parse yaml");
 
         assert_eq!(from_toml, original);
         assert_eq!(from_json, original);
