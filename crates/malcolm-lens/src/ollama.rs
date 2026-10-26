@@ -1,11 +1,12 @@
 use std::fmt::Write as _;
 
 use rig_core::client::CompletionClient;
-use rig_core::completion::Prompt;
+use rig_core::completion::CompletionModel;
 use rig_core::providers::ollama;
 
 use crate::{
     Directive, LensConfig, LensError, LensProvider, LensReport, PromptBuilder, ResponseParser,
+    completion,
 };
 
 /// Ollama-backed lens provider.
@@ -58,13 +59,15 @@ impl LensProvider for OllamaLens {
         directive: Directive,
     ) -> Result<LensReport, LensError> {
         let prompt = Self::prompt_for(report, directive, self.max_tokens)?;
-        let agent = self.client.agent(self.model.clone()).build();
+        let model = self.client.completion_model(self.model.clone());
+        let request = completion::build_request(&model, prompt);
 
-        let narrative = agent
-            .prompt(prompt)
+        let response = model
+            .completion(request)
             .await
             .map_err(|error| LensError::ProviderError(error.to_string()))?;
 
+        let narrative = completion::extract_text(&response.choice);
         ResponseParser::parse(&narrative, &directive)
     }
 }
