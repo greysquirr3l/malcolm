@@ -1,0 +1,61 @@
+# RustSec advisory policy for `cargo audit`.
+#
+# The Security Audit workflow runs `cargo audit` on every push that
+# touches a manifest or lockfile. This file pins the advisories we
+# knowingly accept, with the reasoning for each, so the gate stays
+# deterministic instead of failing on every new advisory that lands in
+# the RustSec database.
+#
+# Each entry is a RustSec advisory ID. Prefer fixing the dependency over
+# ignoring the advisory; an entry here should mean "we evaluated this
+# and it does not apply to us", not "we did not get to this yet".
+#
+# `deny.toml` carries the same decisions for `cargo deny` so the two
+# gates agree.
+
+[advisories]
+ignore = [
+    # --- zip: symlink / permission handling in archive extraction ---
+    #
+    # `zip` reaches us only through `ndarray-npy` -> `egobox-gp` ->
+    # `egobox-ego`, and that chain is gated behind the optional
+    # `bayesopt` feature, which is not in the default build.
+    #
+    # All three advisories concern the archive *extraction* path
+    # (`ZipArchive::extract` / `ZipStreamReader::extract`): writing
+    # entries to disk while preserving Unix permissions, and following
+    # symlinks that point outside the destination directory. The
+    # vulnerable code is reached only when a caller extracts an
+    # untrusted archive to disk.
+    #
+    # `ndarray-npy` never calls `extract()`. It reads `.npy`/`.npz`
+    # payloads in memory via `ZipArchive::by_index` / `by_name`, which
+    # does not write files and does not materialise symlinks. The
+    # extraction path is therefore unreachable from malcolm's use of
+    # the crate.
+    #
+    # The fix is only published for `zip >= 9.0.0`, and `ndarray-npy`
+    # pins `zip ^2` with no compatible release in between, so we cannot
+    # take the fix without dropping the `bayesopt` feature. Revisit if
+    # `egobox` ever moves to `ndarray-npy 0.10`+ with a `zip` version
+    # that resolves the advisories.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+
+    # --- bincode: unmaintained ---
+    #
+    # `bincode` is pulled in by `egobox-ego` / `egobox-gp` for
+    # serialising surrogate models, and is therefore only present under
+    # the optional `bayesopt` feature. The crate is unmaintained but
+    # carries no known vulnerability, and the advisory has no patched
+    # release to move to.
+    "RUSTSEC-2025-0141",
+
+    # --- paste: unmaintained ---
+    #
+    # `paste` is a build-time proc-macro helper used by `argmin`,
+    # `egobox-gp` and `linfa-pls`. It is unmaintained with no known
+    # vulnerability and no patched release.
+    "RUSTSEC-2024-0436",
+]
