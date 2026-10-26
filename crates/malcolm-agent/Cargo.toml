@@ -1,6 +1,6 @@
 [package]
 name = "malcolm-agent"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Optional out-of-process fault adapters for malcolm — real OS side effects behind a SafetyGuard"
@@ -32,8 +32,8 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
 [dependencies]
-malcolm = { path = "../malcolm", version = "0.7.0" }
-malcolm-core = { path = "../malcolm-core", version = "0.7.0" }
+malcolm = { path = "../malcolm", version = "0.8.0" }
+malcolm-core = { path = "../malcolm-core", version = "0.8.0" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
@@ -45,7 +45,7 @@ signal-hook = "0.4"
 # the union of what the `process` and `syscall` adapters use; the
 # dependency is gated behind either feature, so the default
 # build of `malcolm-agent` is the in-process port only.
-nix = { version = "0.29", features = ["signal", "process", "ptrace"], optional = true }
+nix = { version = "0.31", features = ["signal", "process", "ptrace"], optional = true }
 # T37's probability-driven fault injection needs a seeded RNG so a fixed
 # seed reproduces the same inject/skip sequence across runs. Pinned to
 # "0.10" (not the workspace's "0.9") to match `malcolm` and
@@ -62,7 +62,7 @@ rand = { version = "0.10", optional = true }
 # would ripple through `Cleanup`, the test harness, and the
 # evaluator). Tokio's `rt` + `macros` features are sufficient; we do
 # not enable `time` (no sleeps in the adapter itself).
-bollard = { version = "0.18", optional = true, default-features = false }
+bollard = { version = "0.21", optional = true, default-features = false }
 tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
 # T38 — Kubernetes adapter: skeleton-only on the dev branch.
 # The adapter defines a `KubeClient` trait (see

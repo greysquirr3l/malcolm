@@ -165,8 +165,8 @@ impl ScenarioRecord {
     /// # Errors
     ///
     /// Returns an error if this record cannot be serialized to YAML.
-    pub fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
-        serde_yaml::to_string(self)
+    pub fn to_yaml(&self) -> Result<String, serde_norway::Error> {
+        serde_norway::to_string(self)
     }
 
     /// Deserialize one record from YAML.
@@ -174,8 +174,8 @@ impl ScenarioRecord {
     /// # Errors
     ///
     /// Returns an error if `payload` is not valid YAML for [`ScenarioRecord`].
-    pub fn from_yaml(payload: &str) -> Result<Self, serde_yaml::Error> {
-        serde_yaml::from_str(payload)
+    pub fn from_yaml(payload: &str) -> Result<Self, serde_norway::Error> {
+        serde_norway::from_str(payload)
     }
 
     /// Verify deterministic integrity tag.

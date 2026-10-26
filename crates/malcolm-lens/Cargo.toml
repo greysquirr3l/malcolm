@@ -1,6 +1,6 @@
 [package]
 name = "malcolm-lens"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "LLM interpretability layer for malcolm chaos reports"
@@ -14,14 +14,14 @@ categories = ["development-tools::testing", "simulation", "science"]
 workspace = true
 
 [dependencies]
-malcolm = { path = "../malcolm", version = "0.7.0" }
+malcolm = { path = "../malcolm", version = "0.8.0" }
 thiserror = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde_json = "1"
 async-trait = "0.1"
-rig-core = "0.40"
+rig-core = "0.41"
 
 [dev-dependencies]
 proptest = { workspace = true }

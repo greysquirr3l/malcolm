@@ -310,16 +310,28 @@ pub trait KubeClient: Send + Sync + std::fmt::Debug {
     /// List the pods that a `LabelSelector` would match. The
     /// `LabelSelector` targets are in a single namespace per call.
     /// Returns an empty `Vec` (not an error) if no pods match.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError`] if the API call fails.
     fn list_pods(
         &self,
         namespace: &str,
         selector: &LabelSelector,
     ) -> Result<Vec<PodRef>, AgentError>;
     /// Delete a single pod by name in a namespace.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError`] if the API call fails.
     fn delete_pod(&self, namespace: &str, name: &str) -> Result<(), AgentError>;
 
     /// Evict a single pod by name in a namespace (creates an
     /// `Eviction` CRD; the K8s controller honours PDBs).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError`] if the API call fails.
     fn evict_pod(&self, namespace: &str, name: &str) -> Result<(), AgentError>;
 }
 
