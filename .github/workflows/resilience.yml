@@ -25,9 +25,11 @@ env:
   RUST_BACKTRACE: 1
 
 # OpenSSF-aligned permission posture: top-level `contents: read` for
-# all jobs, and the SARIF-upload job below escalates to
-# `security-events: write` only on the upload step. This minimizes the
-# blast radius if a workflow ever leaks a compromised token.
+# all jobs, and the job below adds `security-events: write` because it
+# uploads SARIF results to code scanning. GitHub has no step-level
+# `permissions` block, so that grant has to sit at job level. This
+# minimizes the blast radius if a workflow ever leaks a compromised
+# token.
 permissions:
   contents: read
 
@@ -43,6 +45,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The SARIF upload step needs to write code-scanning results. The
+      # permission has to be granted at job level — a step-level
+      # `permissions` block does not exist — and the token can only
+      # reach the code-scanning API on `push` events, not on
+      # `pull_request` from a fork, so the upload degrades to a warning
+      # on fork PRs.
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

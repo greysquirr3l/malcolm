@@ -25,6 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # `gh workflow run release.yml` creates a workflow_dispatch event,
+      # which the `actions` permission governs. Without it the dispatch
+      # fails with "HTTP 403: Resource not accessible by integration"
+      # and the release never runs, even though the tag was pushed.
+      actions: write
     steps:
       # Check out main rather than the workflow_run head_sha: a
       # workflow_run event carries the SHA that triggered the upstream
