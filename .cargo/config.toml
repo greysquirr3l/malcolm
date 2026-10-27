@@ -3,11 +3,41 @@
 jobs = -1
 
 [target.'cfg(all())']
+# The repository's strict clippy profile lives here rather than in the
+# `l` / `lx` aliases so the two cannot drift apart.
+#
+# These are all *tool lints* for clippy: rustc ignores lints belonging
+# to another tool, so a plain `cargo build` or `cargo test` is
+# unaffected — they only take effect under clippy-driver. That is why
+# `-D warnings` stays on the alias command line instead of here: that
+# one is a real rustc lint and would deny warnings in ordinary builds.
+#
+# Caveat: cargo ignores `target.*.rustflags` entirely when the
+# `RUSTFLAGS` environment variable is set, so a stray `RUSTFLAGS` in
+# your shell silently drops this profile. CI never sets it, so the
+# pipeline gate is unaffected; if you export `RUSTFLAGS`, unset it
+# before trusting a local `cargo l` / `cargo lx`.
 rustflags = [
-    # Enable all clippy pedantic lints
+    # Lint groups.
+    "-Wclippy::all",
     "-Wclippy::pedantic",
-    # Deny warnings in CI
-    # "-Dwarnings",
+    "-Wclippy::nursery",
+    "-Wclippy::cargo",
+    "-Wclippy::perf",
+    # Lints that conflict with this project's style.
+    "-Aclippy::module_name_repetitions",
+    "-Aclippy::must_use_candidate",
+    "-Aclippy::missing_errors_doc",
+    "-Aclippy::missing_panics_doc",
+    "-Aclippy::struct_excessive_bools",
+    "-Aclippy::multiple_crate_versions",
+    # Lints that must never appear.
+    "-Dclippy::unwrap_used",
+    "-Dclippy::expect_used",
+    "-Dclippy::panic",
+    "-Dclippy::indexing_slicing",
+    "-Dclippy::cast_ptr_alignment",
+    "-Dclippy::suspicious",
 ]
 
 [alias]
@@ -17,8 +47,28 @@ c = "check --workspace"
 b = "build --workspace"
 # Test all
 t = "test --workspace"
-# Clippy profile used in this repository
-l = "clippy --workspace --all-targets --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo -W clippy::perf -A clippy::module_name_repetitions -A clippy::must_use_candidate -A clippy::missing_errors_doc -A clippy::missing_panics_doc -A clippy::struct_excessive_bools -A clippy::multiple_crate_versions -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic -D clippy::indexing_slicing -D clippy::cast_ptr_alignment -D clippy::suspicious -D warnings"
+# Clippy profile used in this repository. This is the same command the
+# CI lint job runs, so the pipeline gate and the local gate are
+# literally one definition.
+l = "clippy --workspace --all-targets --all-features -- -D warnings"
+# Cross-target clippy for the Linux-gated code.
+#
+# The `cgroups`, `netem` and `syscall` adapters are behind
+# `#[cfg(all(target_os = "linux", ...))]`, so a native `cargo l` never
+# type-checks them on macOS or Windows — and a strict-profile lint
+# landing in that code is invisible until CI runs it on a Linux
+# runner. Clippy type-checks without linking, so cross-targeting is
+# enough; no Linux C toolchain is required.
+#
+# Scoped to `-p malcolm-agent` because it is the only crate with
+# platform-gated code. The other crates cannot cross-lint as a
+# workspace: their dev-dependencies pull in C code (`criterion` ->
+# `alloca`, `rig-core` -> `aws-lc-sys`) that needs a real Linux
+# compiler.
+#
+# Requires the target once: `rustup target add x86_64-unknown-linux-gnu`.
+# The pre-push hook installs it for you.
+lx = "clippy -p malcolm-agent --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings"
 # Dependency/license governance policy
 policy = "deny check"
 # Full preflight check
