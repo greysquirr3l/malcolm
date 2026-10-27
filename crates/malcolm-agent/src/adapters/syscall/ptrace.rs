@@ -256,12 +256,11 @@ impl Supervisor {
     /// own loop returned an error or panicked.
     pub(super) fn stop(mut self) -> Result<(), AgentError> {
         self.detach.store(true, Ordering::SeqCst);
-        match self.handle.take() {
-            Some(handle) => handle
+        self.handle.take().map_or(Ok(()), |handle| {
+            handle
                 .join()
-                .unwrap_or_else(|_| Err(adapter_failure("supervisor thread panicked".to_owned()))),
-            None => Ok(()),
-        }
+                .unwrap_or_else(|_| Err(adapter_failure("supervisor thread panicked".to_owned())))
+        })
     }
 }
 
@@ -585,7 +584,7 @@ fn to_pid(pid: u32) -> Result<Pid, AgentError> {
         .map_err(|_| adapter_failure(format!("pid {pid} does not fit in i32 on this platform")))
 }
 
-fn adapter_failure(reason: String) -> AgentError {
+const fn adapter_failure(reason: String) -> AgentError {
     AgentError::AdapterFailure {
         adapter: SyscallAdapter::KIND,
         reason,

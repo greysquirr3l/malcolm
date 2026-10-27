@@ -218,7 +218,10 @@ mod tests {
             1,
             "expected exactly one child cgroup; found {entries:?}"
         );
-        let memory_max = entries[0].join("memory.max");
+        let memory_max = entries
+            .first()
+            .expect("exactly one child cgroup")
+            .join("memory.max");
         let written = std::fs::read_to_string(&memory_max).expect("memory.max should be readable");
         let trimmed = written.trim();
         assert_eq!(
@@ -272,7 +275,10 @@ mod tests {
             .filter(|p| p.is_dir())
             .collect();
         assert_eq!(entries.len(), 1);
-        let cpu_max = entries[0].join("cpu.max");
+        let cpu_max = entries
+            .first()
+            .expect("exactly one child cgroup")
+            .join("cpu.max");
         let written = std::fs::read_to_string(&cpu_max).expect("cpu.max should be readable");
         let trimmed = written.trim();
         assert_eq!(

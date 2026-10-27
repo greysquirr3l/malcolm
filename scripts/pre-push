@@ -10,9 +10,11 @@ echo "Running pre-push checks..."
 echo "→ Running tests..."
 cargo test --workspace --all-targets
 
-# Run clippy with warnings as errors across the whole workspace.
+# Run the repository's strict clippy profile. This is the same `cargo l`
+# alias the CI lint job runs, so the local gate and the pipeline gate
+# cannot diverge.
 echo "→ Running clippy..."
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo l
 
 # Ensure a release build still works.
 echo "→ Building release..."
