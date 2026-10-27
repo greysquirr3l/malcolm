@@ -16,6 +16,26 @@ cargo test --workspace --all-targets
 echo "→ Running clippy..."
 cargo l
 
+# Lint the Linux-gated code from a non-Linux host. The `cgroups`,
+# `netem` and `syscall` adapters sit behind
+# `#[cfg(all(target_os = "linux", ...))]`, so a native clippy run never
+# type-checks them on macOS or Windows. CI does lint them (it runs on a
+# Linux runner), so without this check a lint in that code is only ever
+# caught in the pipeline. Clippy type-checks without linking, so
+# cross-targeting needs no Linux C toolchain.
+#
+# If the target cannot be installed (no rustup, offline, ...) the check
+# warns and is skipped rather than blocking the push — a missing
+# toolchain is an environment problem, not a defect in the change.
+echo "→ Running cross-target clippy (Linux)..."
+if rustup target add x86_64-unknown-linux-gnu >/dev/null 2>&1; then
+    cargo lx
+else
+    echo "  ⚠ skipped: could not install the x86_64-unknown-linux-gnu target."
+    echo "    The Linux-gated adapter code was NOT linted. To cover it:"
+    echo "      rustup target add x86_64-unknown-linux-gnu"
+fi
+
 # Ensure a release build still works.
 echo "→ Building release..."
 cargo build --workspace --release
