@@ -67,8 +67,15 @@ jobs:
       - name: Run doctests
         run: cargo test --workspace --doc
 
-      - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      # Use the `l` alias from .cargo/config.toml so the CI lint
+      # contract and the local dev contract are literally the same
+      # command. Spelling the flags out here would let the two drift,
+      # and they already had: the plain `-D warnings` invocation missed
+      # the pedantic lints and the `unwrap_used` / `expect_used` /
+      # `panic` denials that the alias enforces, so strict-alias
+      # lints reached `main` unnoticed (see #62).
+      - name: Clippy (strict profile)
+        run: cargo l
 
   format-check:
     name: Format check
