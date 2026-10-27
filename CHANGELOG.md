@@ -1,3 +1,120 @@
+## [0.9.0] - 2026-10-27
+
+This release rolls up the lint-gate work that landed after 0.8.0. The
+substantive change for consumers is the `toml` 0.9 → 1.1 upgrade in
+`malcolm`; the rest is lint enforcement, CI hardening, and dev tooling.
+
+No breaking changes to the public API of `malcolm-core`, `malcolm`, or
+`malcolm-lens`.
+
+### Changed
+
+- **`malcolm` upgrades `toml` from 0.9 to 1.1.** The 1.x line is the
+  current release of the crate; 0.9 no longer receives fixes. The
+  `toml` types do not appear in `malcolm`'s public API — a parse
+  failure is reported as `BudgetError::Parse` with the underlying
+  error boxed as `Box<dyn std::error::Error + Send + Sync>` — so
+  this is not a breaking change for callers. `toml` 1.1 keeps the
+  workspace's `rust-version = "1.85"` floor, so the MSRV is unchanged.
+- **The CI lint gate now runs the repository's strict clippy profile.**
+  `.github/workflows/ci.yml` previously ran
+  `cargo clippy --workspace --all-targets -- -D warnings`, which was
+  weaker than the `cargo l` alias in `.cargo/config.toml`: it lacked
+  `--all-features`, the pedantic/nursery/cargo/perf lint groups, and the
+  `unwrap_used` / `expect_used` / `panic` / `indexing_slicing` /
+  `cast_ptr_alignment` / `suspicious` denials. CI and the pre-push hook
+  now both run the same alias, so the pipeline gate and the local gate
+  are one definition.
+- **The strict clippy profile moved from the `l` alias into
+  `[target.'cfg(all())'] rustflags`** in `.cargo/config.toml`, so the
+  native and cross-target lint invocations share one flag set and
+  cannot drift apart. The flags are clippy tool lints, which rustc
+  ignores, so ordinary `cargo build` and `cargo test` runs are
+  unaffected.
+- **GitHub Actions permissions tightened.** Two workflows were granted
+  only `contents: read` while needing more; the auto-tag workflow now
+  requests `actions: write` explicitly to dispatch the release
+  workflow, with the reason documented inline.
+- **`softprops/action-gh-release` 3.0.1 → 3.0.3** and
+  **`taiki-e/install-action` 2.4.0 → 2.87.5.**
+- **`SECURITY.md` supported-versions table updated** from `0.5.x` to
+  `0.9.x`. The table had not been touched since the initial commit
+  and was three releases stale, so it did not describe the versions
+  that actually receive security fixes.
+- **Quick-start dependency examples updated** from `malcolm = "0.6.0"`
+  to `malcolm = "0.9.0"` in `README.md` and `docs/book/src/quick-start.md`.
+  These had likewise gone stale at 0.6.0.
+- **The SARIF example in `docs/ci-gating.md` now shows
+  `malcolm` version `0.9.0`.** The emitted value comes from
+  `CARGO_PKG_VERSION`, so the example was showing a version the tool
+  no longer produces.
+
+### Fixed
+
+- **23 strict-profile lints in the Linux-gated `malcolm-agent` code.**
+  The `cgroups`, `netem`, and `syscall` adapters are behind
+  `#[cfg(all(target_os = "linux", ...))]`, so the previous CI lint
+  invocation never saw them: on a Linux runner the pedantic and
+  nursery groups were never enabled, and on a macOS or Windows
+  workstation the code does not compile at all. The lints were real,
+  and they are fixed rather than suppressed:
+  - `clippy::indexing_slicing` — `cgroups.rs` indexed `parts[0]` and
+    `parts[2]` behind a `parts.len() == 3` guard that the lint cannot
+    see through; it now matches a `[hierarchy, _, path]` slice
+    pattern, which enforces the length structurally. The same fix in
+    the cgroup integration test replaces `entries[0]` with
+    `entries.first().expect(..)`.
+  - `clippy::redundant_pub_crate` — `netem_cmd` is a private module,
+    so its `pub(crate)` items add nothing over `pub`. The
+    `redundant_pub_crate` / `unreachable_pub` pair has no workable
+    visibility between them, so the items became `pub` with a
+    per-item `#[expect(unreachable_pub, reason = "..")]`, matching the
+    treatment already used for `malcolm-lens`'s `completion` module
+    and `malcolm`'s `test_util` module.
+  - `clippy::option_if_let_else` — the `if let` / `match` pairs in
+    `NetemParams::tc_argv`, `Supervisor::stop`, and
+    `probe_ptrace_available` are now `map_or_else` / `is_ok_and`.
+  - `clippy::expect_used` and `clippy::unwrap_used` — both occur only
+    in test code, and are suppressed on the test modules with a
+    reason, per the convention in `malcolm`'s `assertions` module. The
+    one `panic!` in the netem integration test became an `assert!`,
+    which also clears `clippy::manual_assert`.
+  - `clippy::too_long_first_doc_paragraph` — five long leading doc
+    paragraphs were split into a summary line plus a detail
+    paragraph.
+  - `clippy::missing_const_for_fn` — `NetemAction::to_params` and
+    `ptrace::adapter_failure` are now `const fn`.
+  - `clippy::use_self` — `NetemAdapter::revert_internal` is now
+    `Self::revert_internal`.
+  - `clippy::derive_partial_eq_without_eq` — `SyscallEffect` now
+    derives `Eq` alongside `PartialEq`.
+  - `clippy::redundant_clone` — the cgroup adapter cloned a `PathBuf`
+    that is not used afterwards.
+  - `unreachable_pub` — `probe_netem_writable` in the netem
+    integration test was `pub` inside a test binary, where nothing is
+    externally reachable.
+- **Three strict-profile lints in the new `malcolm-lens` completion
+  module** — two `clippy::redundant_pub_crate` and one
+  `clippy::expect_used`, resolved the same way as above. The
+  `completion` module is private, so its helpers are crate-internal by
+  design; `pub` with a per-item `#[expect(unreachable_pub, ...)]`
+  states that intent without suppressing the lint crate-wide.
+
+### Added
+
+- **`cargo lx`, a cross-target lint alias for the Linux-gated code.**
+  Clippy type-checks without linking, so cross-targeting at
+  `x86_64-unknown-linux-gnu` needs no Linux C toolchain — just
+  `rustup target add x86_64-unknown-linux-gnu`. This closes the gap
+  that let the 23 lints above reach `main`: a native `cargo l` never
+  type-checks Linux-gated code, so a contributor on macOS or Windows
+  now has a way to see them locally. The alias is scoped to
+  `-p malcolm-agent` because it is the only crate with platform-gated
+  code; the others cannot cross-lint as a workspace because their
+  dev-dependencies pull in C code (`criterion` → `alloca`,
+  `rig-core` → `aws-lc-sys`) that needs a real Linux compiler. The
+  pre-push hook runs it and installs the target on demand.
+
 ## [0.8.0] - 2026-10-26
 
 This release is a maintenance and dependency-security release. It clears

@@ -21,6 +21,17 @@ This book gives you one path from first run to production release operations.
 | `malcolm` | Assembly layer: faults, scenarios, replay, topology, presets, `malcolm-run` CLI |
 | `malcolm-lens` | Optional advisory analysis layer |
 
+## New in 0.9.0
+
+- The CI lint gate now runs the repository's strict clippy profile, and
+  the pre-push hook runs the same command — so the pipeline gate and the
+  local gate are one definition rather than three drifting ones.
+- `cargo lx` cross-lints the Linux-gated adapter code (`cgroups`,
+  `netem`, `syscall`) from a macOS or Windows workstation, which a
+  native `cargo l` cannot reach.
+- `malcolm` upgrades `toml` from 0.9 to 1.1. The `toml` types do not
+  appear in the public API, so this is not a breaking change.
+
 ## New in 0.6.0
 
 - `malcolm::presets` — five named scenarios (`flaky_net`, `slow_disk`,

@@ -4,10 +4,10 @@
 
 | Crate           | Version | Supported           |
 |-----------------|---------|---------------------|
-| `malcolm-core`  | 0.5.x   | yes                 |
-| `malcolm`       | 0.5.x   | yes                 |
-| `malcolm-lens`  | 0.5.x   | yes                 |
-| `< 0.5.0`       | any     | no — please upgrade |
+| `malcolm-core`  | 0.9.x   | yes                 |
+| `malcolm`       | 0.9.x   | yes                 |
+| `malcolm-lens`  | 0.9.x   | yes                 |
+| `< 0.9.0`       | any     | no — please upgrade |
 
 Older releases receive security fixes only at the maintainers' discretion and
 only if the fix can be applied without breaking the public API contract.
