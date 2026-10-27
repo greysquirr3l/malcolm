@@ -14,11 +14,23 @@ use std::time::Duration;
 
 use crate::error::AgentError;
 
+// `netem_cmd` is a private module, so the strict profile's
+// `redundant_pub_crate` / `unreachable_pub` rule pair has no workable
+// visibility: `pub(crate)` trips the first, plain `pub` trips the
+// second. `pub` is the semantics we want (crate-internal helpers
+// reached from the `netem` adapter) and the lint is suppressed per
+// item, matching the treatment in `malcolm-lens`'s `completion` module
+// and in `malcolm`'s `test_util` module.
+
 /// Probe whether the `tc` binary is available and exit-codes 0
 /// on `--help`. The adapter treats absence as a clean platform
 /// error so unprivileged / minimal containers can opt out.
 #[must_use]
-pub(crate) fn tc_available() -> bool {
+#[expect(
+    unreachable_pub,
+    reason = "netem_cmd module is private; these helpers are crate-internal by design"
+)]
+pub fn tc_available() -> bool {
     Command::new("tc")
         .arg("-V")
         .output()
@@ -30,7 +42,11 @@ pub(crate) fn tc_available() -> bool {
 /// line per qdisc. We only need the first line and only the kind
 /// + handle; everything else is restored verbatim on revert.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct QdiscSnapshot {
+#[expect(
+    unreachable_pub,
+    reason = "netem_cmd module is private; these helpers are crate-internal by design"
+)]
+pub struct QdiscSnapshot {
     /// The original `tc qdisc show` output (first line) so revert
     /// can replay it.
     pub raw: String,
@@ -124,7 +140,11 @@ impl QdiscSnapshot {
 /// `NetemAction`. Encapsulated so the command builder sees one
 /// shape regardless of which action variant produced it.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NetemParams {
+#[expect(
+    unreachable_pub,
+    reason = "netem_cmd module is private; these helpers are crate-internal by design"
+)]
+pub struct NetemParams {
     /// Mean latency to add to every packet.
     pub delay: Option<Duration>,
     /// Jitter on the delay (uniform distribution).
@@ -156,23 +176,23 @@ impl NetemParams {
         let mut out: Vec<String> = Vec::new();
         if let Some(delay) = self.delay {
             let ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
-            let delay_arg = if let Some(j) = self.delay_jitter {
-                let jms = u64::try_from(j.as_millis()).unwrap_or(u64::MAX);
-                match self.delay_correlation {
-                    Some(c) => format!("{ms}ms {jms}ms {c:.0}%"),
-                    None => format!("{ms}ms {jms}ms"),
-                }
-            } else {
-                format!("{ms}ms")
-            };
+            let delay_arg = self.delay_jitter.map_or_else(
+                || format!("{ms}ms"),
+                |j| {
+                    let jms = u64::try_from(j.as_millis()).unwrap_or(u64::MAX);
+                    self.delay_correlation.map_or_else(
+                        || format!("{ms}ms {jms}ms"),
+                        |c| format!("{ms}ms {jms}ms {c:.0}%"),
+                    )
+                },
+            );
             out.push("delay".to_owned());
             out.push(delay_arg);
         }
         if let Some(p) = self.loss_pct {
-            let loss_arg = match self.loss_correlation {
-                Some(c) => format!("{p:.2}% {c:.0}%"),
-                None => format!("{p:.2}%"),
-            };
+            let loss_arg = self
+                .loss_correlation
+                .map_or_else(|| format!("{p:.2}%"), |c| format!("{p:.2}% {c:.0}%"));
             out.push("loss".to_owned());
             out.push(loss_arg);
         }
@@ -181,10 +201,9 @@ impl NetemParams {
             out.push(format!("{p:.2}%"));
         }
         if let Some(p) = self.reorder_pct {
-            let reorder_arg = match self.reorder_correlation {
-                Some(c) => format!("{p:.2}% {c:.0}%"),
-                None => format!("{p:.2}%"),
-            };
+            let reorder_arg = self
+                .reorder_correlation
+                .map_or_else(|| format!("{p:.2}%"), |c| format!("{p:.2}% {c:.0}%"));
             out.push("reorder".to_owned());
             out.push(reorder_arg);
         }
@@ -197,7 +216,11 @@ impl NetemParams {
 /// when the host has no default route (containers, fresh
 /// systems).
 #[must_use]
-pub(crate) fn default_route_interface() -> Option<String> {
+#[expect(
+    unreachable_pub,
+    reason = "netem_cmd module is private; these helpers are crate-internal by design"
+)]
+pub fn default_route_interface() -> Option<String> {
     let out = Command::new("ip")
         .args(["route", "show", "default"])
         .output()
@@ -220,6 +243,10 @@ pub(crate) fn default_route_interface() -> Option<String> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "tests assert invariants via .expect()/.expect_err() for failure messages"
+)]
 mod tests {
     use super::*;
 

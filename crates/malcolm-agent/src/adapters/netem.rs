@@ -227,7 +227,7 @@ impl NetemAction {
 
     /// Translate the action into the netem parameter set the
     /// command builder consumes.
-    fn to_params(&self) -> NetemParams {
+    const fn to_params(&self) -> NetemParams {
         match self {
             Self::Latency {
                 mean,
@@ -328,10 +328,11 @@ struct AppliedRecord {
     snapshot: Option<QdiscSnapshot>,
 }
 
-/// The tc/netem adapter. Each `apply` call snapshots the
-/// existing root qdisc, builds a `tc qdisc add` command for the
-/// decoded action, and runs it. `revert` removes the netem qdisc
-/// and replays the snapshot.
+/// The tc/netem adapter.
+///
+/// Each `apply` call snapshots the existing root qdisc, builds a
+/// `tc qdisc add` command for the decoded action, and runs it.
+/// `revert` removes the netem qdisc and replays the snapshot.
 #[derive(Debug, Default, Clone)]
 pub struct NetemAdapter {
     /// Monotonic counter for the dry-run / applied ids the
@@ -601,7 +602,7 @@ impl TargetAdapter for NetemAdapter {
                         state.applied.remove(&id)
                     };
                     if let Some(record) = entry {
-                        NetemAdapter::revert_internal(&record);
+                        Self::revert_internal(&record);
                     }
                 })
                 .map_err(|e| AgentError::AdapterFailure {

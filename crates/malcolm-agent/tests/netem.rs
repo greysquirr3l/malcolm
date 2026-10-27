@@ -24,7 +24,7 @@ mod tests {
     /// `true` only when `tc` is on `$PATH` AND the call
     /// succeeds with a no-op netem qdisc.
     #[must_use]
-    pub fn probe_netem_writable() -> bool {
+    fn probe_netem_writable() -> bool {
         // Create a throwaway veth pair if possible; if not,
         // probe a synthetic qdisc on lo (always allowed).
         let probe_iface = probe_iface();
@@ -420,9 +420,10 @@ mod tests {
             if !stdout.contains("netem") {
                 break;
             }
-            if start.elapsed() > std::time::Duration::from_secs(5) {
-                panic!("watchdog did not revert the netem qdisc within 5 s");
-            }
+            assert!(
+                start.elapsed() <= std::time::Duration::from_secs(5),
+                "watchdog did not revert the netem qdisc within 5 s"
+            );
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }

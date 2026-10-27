@@ -15,10 +15,12 @@ use crate::error::AgentError;
 
 use super::SyscallAdapter;
 
-/// Selects a syscall to intercept, either by its canonical `x86_64` name
-/// (resolved against [`BY_NAME`]) or by its raw syscall number (for
-/// syscalls newer than this table, or architecture-specific numbers the
-/// operator has already looked up).
+/// Selects a syscall to intercept.
+///
+/// Either by its canonical `x86_64` name (resolved against
+/// [`BY_NAME`]) or by its raw syscall number (for syscalls newer than
+/// this table, or architecture-specific numbers the operator has
+/// already looked up).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyscallSelector {
     /// Canonical syscall name, e.g. `"write"`, `"connect"`.
@@ -475,6 +477,11 @@ pub(super) const BY_NAME: &[(&str, i64)] = &[
 ];
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "tests assert invariants via .expect()/.unwrap() for failure messages"
+)]
 mod tests {
     use super::*;
 

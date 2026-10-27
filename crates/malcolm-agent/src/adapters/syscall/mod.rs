@@ -80,7 +80,7 @@ pub enum SyscallTarget {
 }
 
 /// What to do to a matching syscall occurrence.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyscallEffect {
     /// Skip the real syscall and report `-errno` to the caller.
     FailWith {
@@ -285,10 +285,11 @@ fn decode_probability(obj: &Map<String, Value>) -> Result<f32, AgentError> {
     Ok(narrowed)
 }
 
-/// The syscall interception adapter. Each applied fault owns a
-/// dedicated `ptrace` supervisor thread for its lifetime; `revert` stops
-/// that thread and detaches, leaving the target running unimpeded —
-/// see [`ptrace::Supervisor::stop`].
+/// The syscall interception adapter.
+///
+/// Each applied fault owns a dedicated `ptrace` supervisor thread for
+/// its lifetime; `revert` stops that thread and detaches, leaving the
+/// target running unimpeded — see [`ptrace::Supervisor::stop`].
 #[derive(Debug, Default)]
 pub struct SyscallAdapter {
     next_id: AtomicU64,
@@ -466,8 +467,6 @@ pub fn probe_ptrace_available() -> bool {
         seed: 0,
     };
     let command = ["/bin/true".to_owned()];
-    match ptrace::Supervisor::spawn_under_supervision(&command, spec) {
-        Ok(supervisor) => supervisor.stop().is_ok(),
-        Err(_) => false,
-    }
+    ptrace::Supervisor::spawn_under_supervision(&command, spec)
+        .is_ok_and(|supervisor| supervisor.stop().is_ok())
 }

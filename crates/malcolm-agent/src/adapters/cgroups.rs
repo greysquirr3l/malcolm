@@ -193,10 +193,11 @@ struct MovedPid {
     original_cgroup: PathBuf,
 }
 
-/// The cgroup resource-limit adapter. Each `apply` call creates a
-/// fresh child cgroup under [`MALCOLM_PARENT_SLICE`]/<id>/,
-/// optionally moves allowlisted pids into it, and writes the
-/// cgroup interface files.
+/// The cgroup resource-limit adapter.
+///
+/// Each `apply` call creates a fresh child cgroup under
+/// [`MALCOLM_PARENT_SLICE`]/<id>/, optionally moves allowlisted pids
+/// into it, and writes the cgroup interface files.
 #[derive(Debug, Default)]
 pub struct CgroupAdapter {
     /// Monotonic counter for the dry-run / applied ids the
@@ -320,12 +321,14 @@ impl CgroupAdapter {
             // Hierarchy 0 with an empty controller list and a non-empty path
             // is the cgroup v2 entry.
             let parts: Vec<&str> = line.splitn(3, ':').collect();
-            if parts.len() == 3 && parts[0] == "0" {
-                let rel = parts[2].trim_start_matches('/');
-                if rel.is_empty() {
-                    return Ok(PathBuf::from(DEFAULT_CGROUP_ROOT));
+            if let [hierarchy, _, path] = parts.as_slice() {
+                if *hierarchy == "0" {
+                    let rel = path.trim_start_matches('/');
+                    if rel.is_empty() {
+                        return Ok(PathBuf::from(DEFAULT_CGROUP_ROOT));
+                    }
+                    return Ok(PathBuf::from(DEFAULT_CGROUP_ROOT).join(rel));
                 }
-                return Ok(PathBuf::from(DEFAULT_CGROUP_ROOT).join(rel));
             }
         }
         // cgroup v1 only (or legacy): bail with a clear error.
@@ -509,7 +512,7 @@ impl TargetAdapter for CgroupAdapter {
         let child = if target_cgroup == Path::new(MALCOLM_PARENT_SLICE) {
             target_cgroup.join(child_name)
         } else {
-            target_cgroup.clone()
+            target_cgroup
         };
         fs::create_dir_all(&child).map_err(|e| AgentError::AdapterFailure {
             adapter: Self::KIND,
@@ -617,10 +620,12 @@ impl TargetAdapter for CgroupAdapter {
 }
 
 /// Helper for tests: probe the host to see if we can write
-/// cgroup files. Returns `Some(root)` if cgroup v2 is available
-/// and the malcolm parent slice is creatable, `None` otherwise.
-/// The caller should `eprintln!` a skip message when this
-/// returns `None` so the test runner makes the skip visible.
+/// cgroup files.
+///
+/// Returns `Some(root)` if cgroup v2 is available and the malcolm
+/// parent slice is creatable, `None` otherwise. The caller should
+/// `eprintln!` a skip message when this returns `None` so the test
+/// runner makes the skip visible.
 #[must_use]
 pub fn probe_cgroup_writable() -> Option<PathBuf> {
     let root = CgroupAdapter::detect_cgroup_v2().ok()?;
