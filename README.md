@@ -21,7 +21,7 @@ malcolm is a standalone Rust chaos engineering library for fault injection and a
 
 ```toml
 [dev-dependencies]
-malcolm = "0.6.0"
+malcolm = "0.9.0"
 ```
 
 ## Scenario Composition
