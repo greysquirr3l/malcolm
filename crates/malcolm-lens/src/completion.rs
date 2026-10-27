@@ -8,13 +8,24 @@
 use rig_core::OneOrMany;
 use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest};
 
+// `completion` is a private module, so the strict alias's
+// `redundant_pub_crate` / `unreachable_pub` rule pair has no workable
+// visibility: `pub(crate)` trips the first, plain `pub` trips the second.
+// `pub` is the semantics we want (crate-internal helpers reachable from
+// the `anthropic` and `ollama` providers) and the lint is suppressed
+// per item, matching the treatment in `examples/support/ollama_guard.rs`.
+
 /// Build a completion request for `prompt` against `model`.
 ///
 /// The prompt is sent as a single user message. No preamble is set — the
 /// system prompt is already embedded in the prompt body by
 /// [`crate::PromptBuilder`] — and no output budget is set, so each provider
 /// applies its own default exactly as the agent-based path did.
-pub(crate) fn build_request<M>(model: &M, prompt: String) -> CompletionRequest
+#[expect(
+    unreachable_pub,
+    reason = "completion module is private; these helpers are crate-internal by design"
+)]
+pub fn build_request<M>(model: &M, prompt: String) -> CompletionRequest
 where
     M: CompletionModel,
 {
@@ -26,7 +37,11 @@ where
 /// Providers may split a single reply across several text blocks; they are
 /// concatenated in order with no separator, matching the behaviour of the
 /// agent-based path this replaced.
-pub(crate) fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
+#[expect(
+    unreachable_pub,
+    reason = "completion module is private; these helpers are crate-internal by design"
+)]
+pub fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -37,6 +52,10 @@ pub(crate) fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "tests assert invariants via .expect() for failure messages"
+)]
 mod tests {
     use rig_core::OneOrMany;
     use rig_core::completion::AssistantContent;
