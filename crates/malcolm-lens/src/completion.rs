@@ -8,6 +8,8 @@
 use rig_core::OneOrMany;
 use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest};
 
+use crate::LensError;
+
 // `completion` is a private module, so the strict alias's
 // `redundant_pub_crate` / `unreachable_pub` rule pair has no workable
 // visibility: `pub(crate)` trips the first, plain `pub` trips the second.
@@ -15,21 +17,56 @@ use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest}
 // the `anthropic` and `ollama` providers) and the lint is suppressed
 // per item, matching the treatment in `examples/support/ollama_guard.rs`.
 
+/// Narrow port over the provider call a lens adapter performs.
+///
+/// The lens needs exactly one thing from a provider: take a prompt plus an
+/// output budget and hand back the assistant's text. Each adapter owns its
+/// rig-core client behind this port, which keeps the budget on the call
+/// site where it can be asserted — an adapter that let the provider
+/// substitute its own default would silently ignore the configured
+/// [`crate::LensConfig::max_tokens`].
+#[expect(
+    unreachable_pub,
+    reason = "completion module is private; this port is crate-internal by design"
+)]
+#[async_trait::async_trait]
+pub trait CompletionTransport: Send + Sync {
+    /// Run one completion against the transport's model.
+    ///
+    /// `max_tokens` is the caller's output budget and must be the budget
+    /// the provider enforces on the wire.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LensError::ProviderError`] when the upstream call fails.
+    async fn complete(&self, prompt: String, max_tokens: u32) -> Result<String, LensError>;
+}
+
 /// Build a completion request for `prompt` against `model`.
 ///
 /// The prompt is sent as a single user message. No preamble is set — the
 /// system prompt is already embedded in the prompt body by
-/// [`crate::PromptBuilder`] — and no output budget is set, so each provider
-/// applies its own default exactly as the agent-based path did.
+/// [`crate::PromptBuilder`].
+///
+/// The output budget is set explicitly to `max_tokens`. Without it, each
+/// provider substitutes its own default (Anthropic uses 64 000 tokens for
+/// `claude-sonnet-4*` and 128 000 for `claude-opus-4-*`), which silently
+/// ignores the configured [`crate::LensConfig::max_tokens`]. Setting the
+/// field on the request makes the configured budget the one the provider
+/// enforces; Anthropic additionally *requires* it and errors out when it
+/// is absent.
 #[expect(
     unreachable_pub,
     reason = "completion module is private; these helpers are crate-internal by design"
 )]
-pub fn build_request<M>(model: &M, prompt: String) -> CompletionRequest
+pub fn build_request<M>(model: &M, prompt: String, max_tokens: u32) -> CompletionRequest
 where
     M: CompletionModel,
 {
-    model.completion_request(prompt).build()
+    model
+        .completion_request(prompt)
+        .max_tokens(u64::from(max_tokens))
+        .build()
 }
 
 /// Extract the assistant's text from a completion choice.

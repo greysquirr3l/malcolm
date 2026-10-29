@@ -21,7 +21,7 @@ malcolm is a standalone Rust chaos engineering library for fault injection and a
 
 ```toml
 [dev-dependencies]
-malcolm = "0.9.0"
+malcolm = "0.9.1"
 ```
 
 ## Scenario Composition
@@ -252,7 +252,7 @@ Environment variables:
 - `MALCOLM_LENS_MODEL`: optional model override
 - `OLLAMA_BASE_URL`: optional Ollama endpoint override
 - `MALCOLM_LENS_ALLOW_REMOTE_OLLAMA`: optional override (`true/1/yes/on`) to permit non-loopback Ollama hosts
-- `MALCOLM_LENS_MAX_TOKENS`: optional token budget (default `1024`)
+- `MALCOLM_LENS_MAX_TOKENS`: optional output token budget (default `1024`), sent as the provider's hard output cap
 - `ANTHROPIC_API_KEY`: required when provider is `anthropic`
 
 Security defaults:

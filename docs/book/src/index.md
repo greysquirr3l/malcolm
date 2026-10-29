@@ -21,6 +21,19 @@ This book gives you one path from first run to production release operations.
 | `malcolm` | Assembly layer: faults, scenarios, replay, topology, presets, `malcolm-run` CLI |
 | `malcolm-lens` | Optional advisory analysis layer |
 
+## New in 0.9.1
+
+- `MALCOLM_LENS_MAX_TOKENS` is now a real output cap. It used to reach
+  the provider only as a `TOKEN_BUDGET_HINT` line in the prompt, so an
+  Anthropic run budgeted at 1,024 tokens could still emit up to ~64,000
+  — the provider's own per-model default. The budget is now sent as the
+  provider's `max_tokens` (`options.num_predict` for Ollama), and a
+  wire-level regression test pins it there.
+- The five ignored RustSec advisories are now backed by a test rather
+  than a comment. `crates/malcolm/tests/advisory_reachability.rs`
+  recomputes the default-feature dependency closure and fails if `zip`,
+  `bincode`, or `paste` ever becomes reachable from a default build.
+
 ## New in 0.9.0
 
 - The CI lint gate now runs the repository's strict clippy profile, and

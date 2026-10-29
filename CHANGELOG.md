@@ -1,3 +1,84 @@
+## [0.9.1] - 2026-10-29
+
+A patch release carrying two fixes that make malcolm's promises
+checkable rather than merely stated: the lens token budget now reaches
+the provider as a hard cap, and the ignored RustSec advisories are now
+backed by a test instead of a comment.
+
+No breaking changes to the public API of `malcolm-core`, `malcolm`, or
+`malcolm-lens`.
+
+### Fixed
+
+- **`MALCOLM_LENS_MAX_TOKENS` never reached the provider.** The value
+  was read into `LensConfig::max_tokens` and documented as the
+  "requested max response token budget", but it only ever reached the
+  model as a `TOKEN_BUDGET_HINT` line in the prompt text. Against
+  Anthropic that meant a run configured with a 1,024-token budget could
+  emit up to ~64,000 output tokens — rig-core 0.41's Anthropic provider
+  requires `max_tokens` and fills it from its own per-model default
+  (`default_max_tokens_for_model`, 64,000 for `claude-sonnet-4*`) when
+  the request leaves it unset. The request never errored; it silently
+  ignored the budget.
+
+  `completion::build_request` now sets the budget on the request
+  builder, so the configured value is the one the provider enforces.
+  Anthropic receives it as `max_tokens`; Ollama receives it as
+  `options.num_predict`, which rig-core 0.41 maps from the same field,
+  so the budget is enforced on both providers rather than being
+  prompt-only. The `TOKEN_BUDGET_HINT` line stays — a hint to the model
+  is not the same as a hard output cap, and the two serve different
+  purposes.
+
+- **The advisory ignore lists were not backed by anything.** The five
+  ignored RustSec advisories (`zip`, `bincode`, `paste`) were justified
+  by the claim that the crates they name are reachable only through the
+  optional `bayesopt` feature. That claim was checked by nobody: a
+  future change that made one of those code paths reachable would have
+  left the ignore suppressing the signal instead of raising it.
+
+  `crates/malcolm/tests/advisory_reachability.rs` now recomputes the
+  default-feature dependency closure for every workspace member and
+  fails if `zip`, `bincode`, or `paste` appears in it. The closure is
+  an over-approximation, which is the safe direction — it can raise a
+  false alarm on a crate that is genuinely unreachable, but it cannot
+  let a reachable one slip through. The same test pins `deny.toml` and
+  `.cargo/audit.toml` to the same advisory set so the `cargo deny` and
+  `cargo audit` gates cannot drift apart.
+
+### Changed
+
+- **The lens providers sit behind a narrow `CompletionTransport` port.**
+  `AnthropicLens` and `OllamaLens` previously reached for their rig-core
+  client directly, which made the HTTP boundary impossible to observe
+  from a test. The port keeps the public API of both types unchanged
+  while letting the tests substitute a recording HTTP backend and assert
+  the exact request body that goes out. Each transport is generic over
+  its HTTP backend, so the wire format is exercised against rig-core's
+  own serialisation rather than a hand-rolled approximation.
+- **The CI test job now runs `cargo test -p malcolm-lens
+  --all-features`.** `malcolm-lens` defaults to the `ollama` feature, so
+  `cargo test --workspace` never compiled the Anthropic provider's
+  tests — the new wire-level regression test would not have run in CI at
+  all. The workspace-wide run is unchanged: `--all-features` across the
+  workspace would enable `malcolm-agent`'s Linux-gated `netem` and
+  `syscall` adapters, which need a real Linux runner and host
+  privileges.
+- **`deny.toml` and `.cargo/audit.toml` now name the test that enforces
+  their ignores**, so the justification is checkable rather than
+  aspirational.
+- **The quick-start dependency examples were updated** from
+  `malcolm = "0.9.0"` to `malcolm = "0.9.1"` in `README.md` and
+  `docs/book/src/quick-start.md`. The published `0.9.0` has the token
+  budget bug, so a reader who copies the snippet should get the fix.
+- **The SARIF example in `docs/ci-gating.md` now shows `malcolm`
+  version `0.9.1`.** The emitted value comes from `CARGO_PKG_VERSION`,
+  so the example was showing a version the tool no longer produces.
+- **`docs/book/src/index.md` gains a "New in 0.9.1" section**, and the
+  `MALCOLM_LENS_MAX_TOKENS` description in `README.md` and
+  `docs/book/src/lens-guide.md` now says the budget is sent as the
+  provider's hard output cap rather than leaving it ambiguous.
+
 ## [0.9.0] - 2026-10-27
 
 This release rolls up the lint-gate work that landed after 0.8.0. The

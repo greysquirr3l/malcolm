@@ -17,7 +17,7 @@ cargo clippy --workspace -- -D warnings
 
 ```toml
 [dev-dependencies]
-malcolm = "0.9.0"
+malcolm = "0.9.1"
 ```
 
 ## Run a named preset from the CLI

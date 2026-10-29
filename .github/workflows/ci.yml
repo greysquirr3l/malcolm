@@ -62,7 +62,13 @@ jobs:
           cargo build -p malcolm-lens --no-default-features --features anthropic
 
       - name: Run tests
-        run: cargo test --workspace
+        run: |
+          cargo test --workspace
+          # `malcolm-lens` defaults to the `ollama` feature, so the
+          # Anthropic provider's tests — including the wire-level
+          # regression test that pins the configured token budget to the
+          # request body — never run under the default feature set.
+          cargo test -p malcolm-lens --all-features
 
       - name: Run doctests
         run: cargo test --workspace --doc

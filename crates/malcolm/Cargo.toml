@@ -1,6 +1,6 @@
 [package]
 name = "malcolm"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Chaos engineering fault injection library"
@@ -14,7 +14,7 @@ categories = ["development-tools::testing", "algorithms", "simulation"]
 workspace = true
 
 [dependencies]
-malcolm-core = { path = "../malcolm-core", version = "0.9.0" }
+malcolm-core = { path = "../malcolm-core", version = "0.9.1" }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = "2"
 rand = { version = "0.10" }
@@ -64,6 +64,11 @@ tracing-test = "0.2"
 proptest = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+# The advisory-reachability regression test (issue #66) parses the workspace
+# manifests and `Cargo.lock` to prove the ignored RustSec advisories stay
+# unreachable from a default build. `toml` is already a normal dependency;
+# it is repeated here so the integration test can use it directly.
+toml = "1.1"
 
 # Bayesian-optimization adaptive fault search (T41). Optional; off by
 # default. Pulled in only when the `bayesopt` feature is enabled.
