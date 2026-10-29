@@ -12,6 +12,12 @@
 #
 # `deny.toml` carries the same decisions for `cargo deny` so the two
 # gates agree.
+#
+# Every entry below rests on the same promise: the affected crate is
+# unreachable from a default build. That promise is enforced, not merely
+# asserted, by `crates/malcolm/tests/advisory_reachability.rs`, which
+# recomputes the default-feature dependency closure and fails if `zip`,
+# `bincode`, or `paste` ever becomes reachable.
 
 [advisories]
 ignore = [
