@@ -25,6 +25,10 @@ rig-core = "0.41"
 
 [dev-dependencies]
 proptest = { workspace = true }
+# `test-utils` exposes rig-core's `RecordingHttpClient`, which lets the
+# provider tests assert the exact request body that reaches the wire.
+# The feature pulls in no extra dependencies.
+rig-core = { version = "0.41", features = ["test-utils"] }
 
 [features]
 default = ["ollama"]
