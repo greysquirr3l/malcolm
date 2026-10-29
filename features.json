@@ -1128,6 +1128,54 @@
           "passes": true
         }
       ]
+    },
+    {
+      "id": "T43",
+      "slug": "hierarchical-seed-derivation",
+      "title": "Hierarchical seed derivation for independent fault streams",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
+    },
+    {
+      "id": "T44",
+      "slug": "success-criteria-oracle",
+      "title": "Success-criteria / oracle layer: did the fault actually land?",
+      "passes": false,
+      "criteria": [
+        {
+          "label": "build succeeds",
+          "passes": false
+        },
+        {
+          "label": "all tests pass",
+          "passes": false
+        },
+        {
+          "label": "linter clean",
+          "passes": false
+        },
+        {
+          "label": "implementation matches goal",
+          "passes": false
+        }
+      ]
     }
   ]
 }

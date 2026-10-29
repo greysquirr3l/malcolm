@@ -178,7 +178,7 @@
 
 | Included by default                                                                                                              | Feature-gated                                                                      | Opt-in separate crate                                                                         |
 | :------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------- |
-| T26 metrics seam, T30 assertions, T31 JUnit/SARIF, T32 CI templates, T39 cascade inference, T40 root-cause posterior, T42 Hawkes | T27 `prometheus`, T28 `otel`/`otel-grpc`/`otel-http`, T29 `statsd`, T41 `bayesopt` | T33–T38 in `malcolm-agent` (`process`, `cgroups`, `netem`, `syscall`, `docker`, `kubernetes`) |
+| T26 metrics seam, T30 assertions, T31 JUnit/SARIF, T32 CI templates, T39 cascade inference, T40 root-cause posterior, T42 Hawkes, T43 seed derivation, T44 oracle layer | T27 `prometheus`, T28 `otel`/`otel-grpc`/`otel-http`, T29 `statsd`, T41 `bayesopt` | T33–T38 in `malcolm-agent` (`process`, `cgroups`, `netem`, `syscall`, `docker`, `kubernetes`) |
 
 **Principle:** anything pure-logic, dependency-light, or a repo asset ships by
 default; anything pulling a heavy dependency tree is a `malcolm` feature; anything
@@ -186,6 +186,24 @@ with real, irreversible host/cluster side effects lives in the separate opt-in
 `malcolm-agent` crate, individually feature-gated and runtime-gated by
 `SafetyGuard`. The `malcolm-core` `no_std` math layer is never touched by any of
 these phases.
+
+---
+
+## Phase 13 — Determinism Ergonomics & Success Criteria
+
+> Depends on: Phase 4 (scenario system) + Phase 5 (replay) + T30 (resilience budget).
+> Two capabilities identified by the library survey of comparable chaos-engineering
+> and adversarial-testing projects. T43 fixes a real determinism wart — every fault in
+> a scenario currently draws from the _same_ seed, so two same-kind faults produce
+> identical value sequences. T44 adds the missing oracle: malcolm can say what it
+> injected, but not whether the target actually broke.
+> Both are pure, dependency-free, and default-on — `malcolm-core` stays `no_std`,
+> and the `SuccessCriterion` port trait stays consumer-owned in the assembly layer.
+
+| Task                                                                                     | Status | Notes                                                                                                                                  |
+| :---------------------------------------------------------------------------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| T43 — Hierarchical seed derivation for independent fault streams (**default**, `malcolm-core`, `no_std`) | `[ ]`  | `SeedPath` in `malcolm-core/src/seeds.rs` — stable, documented mixer; per-fault streams derived from the scenario seed so same-kind faults no longer collide; explicit `.seed(...)` stays honored |
+| T44 — Success-criteria / oracle layer (**default**, `malcolm-core` + `malcolm`)           | `[ ]`  | `Verdict` / `VerdictStatus` / `Outcome` in `malcolm-core/src/verdict.rs`; consumer-owned `SuccessCriterion` port trait in `malcolm`; `ScenarioReport` gains `verdicts`; `ResilienceBudget` gains outcome-based rules where `Undetermined` never passes vacuously |
 
 ---
 
