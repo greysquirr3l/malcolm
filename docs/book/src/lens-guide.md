@@ -19,7 +19,8 @@ Lens output is informative, not authoritative. It never mutates runtime fault be
 - `MALCOLM_LENS_MODEL`: optional model override
 - `OLLAMA_BASE_URL`: optional endpoint override
 - `MALCOLM_LENS_ALLOW_REMOTE_OLLAMA`: explicit remote override
-- `MALCOLM_LENS_MAX_TOKENS`: optional token budget
+- `MALCOLM_LENS_MAX_TOKENS`: optional output token budget, sent as the
+  provider's hard output cap
 - `ANTHROPIC_API_KEY`: required for anthropic provider
 
 ## Security defaults

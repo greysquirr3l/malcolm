@@ -267,7 +267,7 @@ document.
   "$schema": "https://json.schemastore.org/sarif-2.1.0/...",
   "version": "2.1.0",
   "runs": [{
-    "tool": { "driver": { "name": "malcolm", "version": "0.9.0", "rules": [...] } },
+    "tool": { "driver": { "name": "malcolm", "version": "0.9.1", "rules": [...] } },
     "invocations": [{ "executionSuccessful": false, "properties": { ... } }],
     "results": [{
       "ruleId": "max_injected_total",
