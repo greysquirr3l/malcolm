@@ -37,7 +37,7 @@ default-features = false
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.32"
+version = "0.33"
 default-features = false
 features = ["metrics", "trace"]
 optional = true
