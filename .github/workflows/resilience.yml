@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload SARIF for code-scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@4e828ff8d448a8a6e532957b1811f387a63867e8 # v3.29.4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: malcolm.sarif
           category: malcolm-resilience
