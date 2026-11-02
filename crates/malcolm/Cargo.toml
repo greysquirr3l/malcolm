@@ -43,7 +43,7 @@ features = ["metrics", "trace"]
 optional = true
 
 [dependencies.opentelemetry_sdk]
-version = "0.32"
+version = "0.33"
 default-features = false
 features = ["metrics", "trace", "rt-tokio", "testing"]
 optional = true
